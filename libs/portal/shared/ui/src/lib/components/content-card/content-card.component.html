@@ -15,7 +15,7 @@
         <div class="thumbnail-wrapper">
             @if (posterUrl() && !artworkFailed()) {
                 <img
-                    [src]="posterUrl()"
+                    [src]="posterSrc()"
                     [alt]="title()"
                     (error)="onImageError()"
                     class="poster"

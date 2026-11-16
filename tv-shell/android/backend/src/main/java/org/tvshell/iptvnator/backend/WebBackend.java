@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   GET  /xtream?targetId&...                -> { action, payload } | error body
  *   GET  /stalker?targetId&macAddress&token&serialNumber&... -> { action, payload } | error body
  *   GET  /parse-xml                          -> 501 (EPG is not part of the PWA)
+ *   GET  /image?url&w                        -> poster image, cached on disk and scaled to ~w px (TV shell only)
  * </pre>
  * Mirrors apps/web-backend/src/app/web-backend-app.ts: same JSON shapes,
  * same HTTP statuses, same "provider failure answered with 200 + error body"
@@ -76,11 +77,18 @@ public class WebBackend {
 
     private final HttpFetcher fetcher;
     private final String runtimeBackendUrl;
+    private final ImageCache imageCache;
     private final Map<String, String> providerTargets = new ConcurrentHashMap<String, String>();
 
     public WebBackend(HttpFetcher fetcher, String runtimeBackendUrl) {
+        this(fetcher, runtimeBackendUrl, null);
+    }
+
+    /** {@code imageCache} may be null: {@code /image} then answers 404 and the PWA loads posters directly. */
+    public WebBackend(HttpFetcher fetcher, String runtimeBackendUrl, ImageCache imageCache) {
         this.fetcher = fetcher;
         this.runtimeBackendUrl = runtimeBackendUrl;
+        this.imageCache = imageCache;
     }
 
     // ---------------------------------------------------------------- entry
@@ -115,6 +123,7 @@ public class WebBackend {
         if ("GET".equals(method) && path.equals("/parse-xml")) {
             return json(501, error("EPG (XMLTV) is not available in the TV shell", 501));
         }
+        if ("GET".equals(method) && path.equals("/image")) return image(query);
         if ("GET".equals(method) && path.equals("/xtream")) return xtream(query);
         if ("GET".equals(method) && path.equals("/stalker")) return stalker(query);
         return json(404, error("Not found", 404));
@@ -155,6 +164,35 @@ public class WebBackend {
         String url = providerTargets.get(id);
         if (url == null) return json(404, error("Provider target not found", 404));
         return url;
+    }
+
+    private Response image(Map<String, String> query) {
+        if (imageCache == null) return json(404, error("Not found", 404));
+        int width = 0;
+        try {
+            if (query.get("w") != null) width = Integer.parseInt(query.get("w").trim());
+        } catch (NumberFormatException e) {
+            width = 0;
+        }
+        // Hosts of the registered providers may be on the local network; no one else's may.
+        java.util.Set<String> trusted = new java.util.HashSet<String>();
+        for (String target : providerTargets.values()) {
+            try {
+                String host = new java.net.URI(target).getHost();
+                if (host != null) trusted.add(host.toLowerCase(java.util.Locale.ROOT));
+            } catch (java.net.URISyntaxException ignored) {
+                // not a usable host: not trusted
+            }
+        }
+        try {
+            ImageCache.Image image = imageCache.get(query.get("url"), width, trusted);
+            Response r = new Response(200, image.contentType, image.bytes);
+            r.headers.put("Cache-Control", "public, max-age=604800");
+            r.headers.put("X-Content-Type-Options", "nosniff");
+            return r;
+        } catch (ImageCache.Unavailable e) {
+            return new Response(e.status, "text/plain; charset=utf-8", String.valueOf(e.getMessage()).getBytes(UTF8));
+        }
     }
 
     private Response parse(Map<String, String> query) {

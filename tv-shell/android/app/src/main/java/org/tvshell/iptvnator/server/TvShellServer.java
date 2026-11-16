@@ -7,11 +7,13 @@ import android.util.Log;
 import org.tvshell.iptvnator.Prefs;
 import org.tvshell.iptvnator.ShellApp;
 import org.tvshell.iptvnator.backend.DiagnosticRedactor;
+import org.tvshell.iptvnator.backend.ImageCache;
 import org.tvshell.iptvnator.backend.ShellSite;
 import org.tvshell.iptvnator.backend.WebBackend;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,6 +42,8 @@ public final class TvShellServer extends NanoHTTPD {
     /** Same bound as the upstream web backend (express.json limit 16kb): only tiny JSON bodies are legitimate. */
     private static final long MAX_API_BODY_BYTES = 16 * 1024;
     private static final Charset UTF8 = Charset.forName("UTF-8");
+    /** Disk budget for cached, card-sized posters (about 30 KB each: thousands of them). */
+    private static final long IMAGE_CACHE_BYTES = 150L * 1024 * 1024;
 
     public TvShellServer(Context context, Prefs prefs, int port) {
         super("127.0.0.1", port);
@@ -51,7 +55,19 @@ public final class TvShellServer extends NanoHTTPD {
                 return readAsset(relativePath);
             }
         }, "/api", prefs.layoutWidth());
-        this.backend = new WebBackend(new AndroidHttpFetcher(), "/api");
+        AndroidHttpFetcher fetcher = new AndroidHttpFetcher();
+        // Poster cache: the OS may clear the cache folder under storage pressure, which only costs a re-download.
+        final ImageCache images = new ImageCache(new File(context.getApplicationContext().getCacheDir(), "posters"),
+            IMAGE_CACHE_BYTES, fetcher, new AndroidImageTranscoder());
+        this.backend = new WebBackend(fetcher, "/api", images);
+        Thread trimmer = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                images.trim();
+            }
+        }, "poster-cache-trim");
+        trimmer.setDaemon(true);
+        trimmer.start();
         setAsyncRunner(new DefaultAsyncRunner() {
             @Override
             public void exec(ClientHandler handler) {

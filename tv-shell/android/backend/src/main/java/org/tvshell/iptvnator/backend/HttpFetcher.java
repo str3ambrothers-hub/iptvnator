@@ -62,14 +62,16 @@ public class HttpFetcher {
 
     private static final class EncodedBody extends FilterInputStream {
         private final long declared;
+        private final long limit;
         private final byte[] singleByte = new byte[1];
         private long count;
         private boolean eof;
         private IOException failure;
 
-        EncodedBody(InputStream in, long declared) {
+        EncodedBody(InputStream in, long declared, long limit) {
             super(in);
             this.declared = declared;
+            this.limit = limit;
         }
 
         @Override
@@ -83,7 +85,7 @@ public class HttpFetcher {
                 int read = super.read(buffer, offset, length);
                 if (read == -1) eof = true;
                 else count += read;
-                if (count > MAX_BODY_BYTES) throw new TooLargeException();
+                if (count > limit) throw new TooLargeException();
                 return read;
             } catch (IOException e) {
                 failure = e;
@@ -111,6 +113,19 @@ public class HttpFetcher {
         public final String contentType;
 
         Result(int status, String body, String contentType) {
+            this.status = status;
+            this.body = body;
+            this.contentType = contentType;
+        }
+    }
+
+    /** An answer kept as bytes: for binary bodies such as images. */
+    public static final class BinaryResult {
+        public final int status;
+        public final byte[] body;
+        public final String contentType;
+
+        BinaryResult(int status, byte[] body, String contentType) {
             this.status = status;
             this.body = body;
             this.contentType = contentType;
@@ -147,18 +162,24 @@ public class HttpFetcher {
     public Result get(String url, Map<String, String> headers, int timeoutMs) throws ProviderException {
         RequestProgress progress = new RequestProgress();
         try {
-            return fetch(url, headers, timeoutMs, progress);
+            BinaryResult raw = fetch(url, headers, timeoutMs, progress, MAX_BODY_BYTES);
+            return new Result(raw.status, new String(raw.body, charsetOf(raw.contentType)), raw.contentType);
         } catch (ProviderException failure) {
             failure.initialResponded |= progress.initialResponded;
             throw failure;
         }
     }
 
+    /** GET as bytes, refusing a body over {@code limit} (never above the text cap). */
+    public BinaryResult getBytes(String url, Map<String, String> headers, int timeoutMs, long limit) throws ProviderException {
+        return fetch(url, headers, timeoutMs, new RequestProgress(), Math.min(limit, MAX_BODY_BYTES));
+    }
+
     public Result testConnection(String url, Map<String, String> headers, int timeoutMs) throws ProviderException {
         return get(url, headers, timeoutMs);
     }
 
-    private Result fetch(String url, Map<String, String> headers, int timeoutMs, RequestProgress progress) throws ProviderException {
+    private BinaryResult fetch(String url, Map<String, String> headers, int timeoutMs, RequestProgress progress, long limit) throws ProviderException {
         Set<String> visited = new HashSet<String>();
         String current = url;
         for (int redirects = 0; ; redirects++) {
@@ -231,7 +252,7 @@ public class HttpFetcher {
                 String contentType = connection.getContentType();
                 // Declared size first: an oversized answer is refused before a byte of it is read.
                 long declared = connection.getContentLengthLong();
-                if (declared > MAX_BODY_BYTES) throw tooLarge();
+                if (declared > limit) throw tooLarge();
                 InputStream in;
                 try {
                     in = connection.getInputStream();
@@ -243,11 +264,11 @@ public class HttpFetcher {
                 boolean gzip = encoding.contains("gzip");
                 boolean compressed = gzip || encoding.contains("deflate");
                 try {
-                    EncodedBody wire = compressed ? new EncodedBody(in, declared) : null;
+                    EncodedBody wire = compressed ? new EncodedBody(in, declared, limit) : null;
                     if (wire != null) in = gzip ? new GZIPInputStream(wire) : new InflaterInputStream(wire);
-                    byte[] body = readAll(in, compressed ? -1 : declared, MAX_BODY_BYTES);
+                    byte[] body = readAll(in, compressed ? -1 : declared, limit);
                     if (wire != null) wire.requireComplete();
-                    return new Result(status, new String(body, charsetOf(contentType)), contentType);
+                    return new BinaryResult(status, body, contentType);
                 } catch (TooLargeException e) {
                     throw tooLarge();
                 } catch (IOException e) {

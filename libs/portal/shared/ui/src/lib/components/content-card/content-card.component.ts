@@ -3,6 +3,7 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    DOCUMENT,
     inject,
     input,
     linkedSignal,
@@ -15,6 +16,7 @@ import { normalizeDateLocale } from '@iptvnator/pipes';
 import { injectTranslationTick } from '@iptvnator/services';
 import { TranslatePipe, TranslateService } from '@ngx-translate/core';
 import { CoverTitlesService } from '../../cover-titles/cover-titles.service';
+import { posterProxyUrl } from './poster-proxy';
 
 /** Channel-like cards always keep their label: logos rarely identify them. */
 const LABELLED_CONTENT_TYPES: ReadonlySet<string> = new Set(['live', 'radio']);
@@ -32,6 +34,7 @@ export class ContentCardComponent {
     private readonly translate = inject(TranslateService);
     private readonly coverTitles = inject(CoverTitlesService);
     private readonly languageTick = injectTranslationTick();
+    private readonly document = inject(DOCUMENT);
 
     /** URL of the poster image */
     readonly posterUrl = input<string>();
@@ -76,6 +79,17 @@ export class ContentCardComponent {
     protected readonly artworkFailed = linkedSignal({
         source: this.posterUrl,
         computation: () => false,
+    });
+    /** The poster went through the shell's cache and that failed: try the original address once. */
+    private readonly proxyFailed = linkedSignal({
+        source: this.posterUrl,
+        computation: () => false,
+    });
+    /** What the image loads: the cached copy in the TV shell, the original elsewhere or after a failure. */
+    protected readonly posterSrc = computed(() => {
+        const url = this.posterUrl();
+        if (!url || this.proxyFailed()) return url;
+        return posterProxyUrl(this.document, url);
     });
     protected readonly artworkMissing = computed(
         () => !this.posterUrl() || this.artworkFailed()
@@ -127,6 +141,10 @@ export class ContentCardComponent {
     }
 
     onImageError(): void {
+        if (this.posterSrc() !== this.posterUrl()) {
+            this.proxyFailed.set(true);
+            return;
+        }
         this.artworkFailed.set(true);
     }
 }
