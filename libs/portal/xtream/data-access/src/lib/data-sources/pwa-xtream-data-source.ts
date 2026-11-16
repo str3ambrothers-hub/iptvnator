@@ -1,4 +1,4 @@
-import { inject, Injectable, Injector } from '@angular/core';
+import { DOCUMENT, inject, Injectable, Injector } from '@angular/core';
 import {
     ALL_CATEGORIES_WITHHELD,
     foldSearchText,
@@ -48,6 +48,10 @@ import {
     findCollectionItems,
     normalizeCollectionIdentity,
 } from './pwa-collection-identity';
+import {
+    CATALOGUE_REVALIDATE_AFTER_MS,
+    createCatalogueStore,
+} from './pwa-catalogue-store';
 import { PwaCollectionStorage } from './pwa-collection-storage';
 import { PwaCollectionCatalog } from './pwa-collection-catalog';
 import type { XtreamCachedContentItem } from './pwa-cached-content';
@@ -92,6 +96,8 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
     private categoryCache = new Map<string, XtreamCategory[]>();
     private contentCache = new Map<string, XtreamCachedContentItem[]>();
     private playlistPasswords = new Map<string, string>();
+    /** Saved catalogues (TV shell only, inert elsewhere): the next launch starts from them. */
+    private readonly catalogueStore = createCatalogueStore(inject(DOCUMENT));
 
     // =========================================================================
     // Playlist Operations (user data storage)
@@ -173,6 +179,7 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
 
         // Clear cache
         this.clearCacheForPlaylist(playlistId);
+        void this.catalogueStore.removePlaylist(playlistId);
     }
 
     private getPlaylistsFromStorage(): XtreamPlaylistData[] {
@@ -510,6 +517,35 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
             ) as XtreamLiveStream[] | XtreamVodStream[] | XtreamSerieItem[];
         }
 
+        // A catalogue saved by an earlier launch: no download, no parse.
+        const saved = await this.catalogueStore.load(cacheKey);
+        options?.signal?.throwIfAborted();
+        if (saved) {
+            this.contentCache.set(cacheKey, saved.items);
+            onTotal?.(saved.items.length);
+            onProgress?.(saved.items.length);
+            if (saved.ageMs > CATALOGUE_REVALIDATE_AFTER_MS) {
+                this.catalogueStore.refreshLater(
+                    cacheKey,
+                    async () =>
+                        this.normalizeContentItems(
+                            await this.apiService.getStreams(credentials, type),
+                            type
+                        ),
+                    (fresh) => {
+                        if (!this.contentCache.has(cacheKey)) return false;
+                        this.contentCache.set(cacheKey, fresh);
+                        return true;
+                    }
+                );
+            }
+            return this.withoutLockedContent(
+                playlistId,
+                type,
+                saved.items
+            ) as XtreamLiveStream[] | XtreamVodStream[] | XtreamSerieItem[];
+        }
+
         // Fetch from API
         options?.onPhaseChange?.(
             type === 'live'
@@ -541,6 +577,7 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
 
         // Cache in memory
         this.contentCache.set(cacheKey, content);
+        this.catalogueStore.saveLater(cacheKey, content);
 
         return this.withoutLockedContent(playlistId, type, content);
     }
