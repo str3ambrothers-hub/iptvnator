@@ -9,6 +9,9 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
@@ -17,6 +20,9 @@ import androidx.media3.common.Tracks;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 
@@ -59,10 +65,26 @@ public class NativePlayerActivity extends android.app.Activity {
         view.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
             | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
 
-        // Device decoders only; fall back to another hardware decoder when the first fails.
+        startPlayer(url, false, 0);
+    }
+
+    private boolean softwareDecoders;
+
+    /**
+     * Builds the player. First with the device's preferred (usually hardware) decoders; when one of
+     * them breaks while playing (some phones' HEVC chips do), once more with the platform's own
+     * software decoders first (Android's built-in codecs, not FFmpeg), from the same position.
+     */
+    private void startPlayer(final String url, boolean software, long positionMs) {
+        softwareDecoders = software;
+        if (player != null) {
+            player.release();
+            player = null;
+        }
         DefaultRenderersFactory renderers = new DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             .setEnableDecoderFallback(true);
+        if (software) renderers.setMediaCodecSelector(softwareFirstSelector());
         // Providers often redirect http to https (or back) and some refuse unknown clients.
         DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
@@ -75,6 +97,13 @@ public class NativePlayerActivity extends android.app.Activity {
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
+                boolean decoderFailure = error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
+                    || error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+                    || error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES;
+                if (decoderFailure && !softwareDecoders && player != null) {
+                    startPlayer(url, true, Math.max(0, player.getCurrentPosition()));
+                    return;
+                }
                 showError(error);
             }
 
@@ -94,8 +123,26 @@ public class NativePlayerActivity extends android.app.Activity {
         });
         view.setPlayer(player);
         player.setMediaItem(MediaItem.fromUri(Uri.parse(url)));
+        if (positionMs > 0) player.seekTo(positionMs);
         player.setPlayWhenReady(true);
         player.prepare();
+    }
+
+    /** The device's decoders with the software ones (no dedicated chip) tried first. */
+    private static MediaCodecSelector softwareFirstSelector() {
+        return new MediaCodecSelector() {
+            @Override
+            public List<MediaCodecInfo> getDecoderInfos(String mimeType, boolean requiresSecureDecoder,
+                                                        boolean requiresTunnelingDecoder)
+                throws MediaCodecUtil.DecoderQueryException {
+                List<MediaCodecInfo> all = new ArrayList<MediaCodecInfo>(
+                    MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder));
+                List<MediaCodecInfo> ordered = new ArrayList<MediaCodecInfo>(all.size());
+                for (MediaCodecInfo info : all) if (!info.hardwareAccelerated) ordered.add(info);
+                for (MediaCodecInfo info : all) if (info.hardwareAccelerated) ordered.add(info);
+                return ordered;
+            }
+        };
     }
 
     /** The reason on screen until dismissed (a toast is cut to one line on many devices). */
