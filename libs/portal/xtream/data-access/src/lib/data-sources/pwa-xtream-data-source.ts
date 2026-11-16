@@ -350,6 +350,31 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
             );
         }
 
+        // Saved by an earlier launch: no request, no "syncing" dialog.
+        const saved =
+            await this.catalogueStore.load<XtreamCategory>(cacheKey);
+        options?.signal?.throwIfAborted();
+        if (saved) {
+            options?.onPhaseChange?.('loading-cached');
+            this.categoryCache.set(cacheKey, saved.items);
+            if (saved.ageMs > CATALOGUE_REVALIDATE_AFTER_MS) {
+                this.catalogueStore.refreshLater(
+                    cacheKey,
+                    () => this.apiService.getCategories(credentials, type),
+                    (fresh) => {
+                        if (!this.categoryCache.has(cacheKey)) return false;
+                        this.categoryCache.set(cacheKey, fresh);
+                        return true;
+                    }
+                );
+            }
+            return this.withoutLockedCategories(
+                playlistId,
+                type,
+                saved.items
+            );
+        }
+
         // Fetch from API
         options?.onPhaseChange?.('loading-categories');
         const categories = await this.apiService.getCategories(
@@ -361,6 +386,7 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
 
         // Cache in memory
         this.categoryCache.set(cacheKey, categories);
+        this.catalogueStore.saveLater(cacheKey, categories);
 
         return this.withoutLockedCategories(playlistId, type, categories);
     }
@@ -518,9 +544,12 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
         }
 
         // A catalogue saved by an earlier launch: no download, no parse.
-        const saved = await this.catalogueStore.load(cacheKey);
+        const saved =
+            await this.catalogueStore.load<XtreamCachedContentItem>(cacheKey);
         options?.signal?.throwIfAborted();
         if (saved) {
+            // Read from the device, not a provider import: no "syncing" dialog.
+            options?.onPhaseChange?.('loading-cached');
             this.contentCache.set(cacheKey, saved.items);
             onTotal?.(saved.items.length);
             onProgress?.(saved.items.length);

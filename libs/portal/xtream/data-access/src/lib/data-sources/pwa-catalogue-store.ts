@@ -1,5 +1,3 @@
-import type { XtreamCachedContentItem } from './pwa-cached-content';
-
 /**
  * A saved copy of each playlist's catalogue, so the TV shell starts from the
  * device instead of downloading and parsing tens of megabytes of provider
@@ -27,13 +25,14 @@ const REFRESH_DELAY_MS = 20_000;
 const DB_NAME = 'iptvnator-catalogue';
 const STORE_NAME = 'catalogues';
 
+/** Catalogue rows or category rows: the store only keeps and returns them. */
 export interface PersistedCatalogue {
     readonly savedAt: number;
-    readonly items: XtreamCachedContentItem[];
+    readonly items: unknown[];
 }
 
-export interface LoadedCatalogue {
-    readonly items: XtreamCachedContentItem[];
+export interface LoadedCatalogue<T> {
+    readonly items: T[];
     readonly ageMs: number;
 }
 
@@ -150,7 +149,7 @@ export class CatalogueStore {
     }
 
     /** The saved catalogue for `key`, or null when absent, expired, damaged or unreadable. */
-    async load(key: string): Promise<LoadedCatalogue | null> {
+    async load<T>(key: string): Promise<LoadedCatalogue<T> | null> {
         if (!this.backend) return null;
         try {
             const saved = await this.backend.get(key);
@@ -167,21 +166,18 @@ export class CatalogueStore {
                 await this.backend.delete(key).catch(() => undefined);
                 return null;
             }
-            return { items: saved.items, ageMs };
+            return { items: saved.items as T[], ageMs };
         } catch {
             return null;
         }
     }
 
-    async save(
-        key: string,
-        items: readonly XtreamCachedContentItem[]
-    ): Promise<void> {
+    async save(key: string, items: readonly unknown[]): Promise<void> {
         if (!this.backend || items.length === 0) return;
         try {
             await this.backend.put(key, {
                 savedAt: this.now(),
-                items: items as XtreamCachedContentItem[],
+                items: items as unknown[],
             });
         } catch {
             // Full or unavailable storage: the catalogue is simply not kept.
@@ -189,7 +185,7 @@ export class CatalogueStore {
     }
 
     /** Saved once the first screen has settled: a large write competes with rendering. */
-    saveLater(key: string, items: readonly XtreamCachedContentItem[]): void {
+    saveLater(key: string, items: readonly unknown[]): void {
         if (!this.backend) return;
         setTimeout(() => void this.save(key, items), SAVE_DELAY_MS);
     }
@@ -200,10 +196,10 @@ export class CatalogueStore {
      * meanwhile, which drops it. Screens already built keep the older copy; the
      * next read and the next launch get this one. A failure keeps the old copy.
      */
-    refreshLater(
+    refreshLater<T>(
         key: string,
-        download: () => Promise<XtreamCachedContentItem[]>,
-        apply: (fresh: XtreamCachedContentItem[]) => boolean
+        download: () => Promise<T[]>,
+        apply: (fresh: T[]) => boolean
     ): void {
         if (!this.backend || this.refreshing.has(key)) return;
         this.refreshing.add(key);
