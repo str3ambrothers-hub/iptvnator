@@ -621,35 +621,19 @@ public class MainActivity extends Activity {
         ExternalPlayer.open(this, url.trim(), title, preferred);
     }
 
-    /** The page's video plays without sound (an audio format the browser player cannot decode). */
+    /**
+     * The page's video plays without sound (an audio format the browser player cannot decode):
+     * go straight to the built-in player, or the player the user picked in Settings, with no dialog.
+     */
     void offerForSilence(final String url, final String title) {
         if (url == null || url.isEmpty() || webView == null || isFinishing()) return;
-        if (!prefs.promptExternalOnError()) return;
         if (externalDialog != null && externalDialog.isShowing()) return;
-        externalDialog = new AlertDialog.Builder(this)
-            .setTitle(R.string.silent_prompt_title)
-            .setMessage(getString(R.string.silent_prompt_message, title == null || title.isEmpty() ? url : title))
-            .setPositiveButton(R.string.external_prompt_open, new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    // The built-in player unless the user picked another app in Settings.
-                    String preferred = prefs.externalPlayerPackage();
-                    if (preferred == null || preferred.isEmpty() || ExternalPlayer.CHOOSER.equals(preferred)) {
-                        startActivity(NativePlayerActivity.intent(MainActivity.this, url, title));
-                    } else {
-                        openExternal(url, title);
-                    }
-                }
-            })
-            .setNegativeButton(R.string.external_prompt_cancel, null)
-            .setOnDismissListener(new DialogInterface.OnDismissListener() {
-                @Override
-                public void onDismiss(DialogInterface dialog) {
-                    externalDialog = null;
-                    if (webView != null) webView.requestFocus(View.FOCUS_DOWN);
-                }
-            })
-            .show();
+        String preferred = prefs.externalPlayerPackage();
+        if (preferred == null || preferred.isEmpty() || ExternalPlayer.CHOOSER.equals(preferred)) {
+            startActivity(NativePlayerActivity.intent(this, url, title));
+        } else {
+            openExternal(url, title);
+        }
     }
 
     /**
