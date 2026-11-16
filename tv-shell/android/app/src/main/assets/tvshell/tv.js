@@ -1345,7 +1345,7 @@
                 currentVideo = t;
                 noteMediaUrl(t.currentSrc || t.getAttribute('src'), null, true);
                 lastMediaTitle = document.title;
-                var startUrl = t.currentSrc || t.getAttribute('src');
+                var startUrl = t.currentSrc || t.getAttribute('src') || api.currentStreamUrl();
                 if (t.tagName === 'VIDEO' && nativeMoviesOn() && isVodUrl(startUrl) && claimNative(startUrl)) {
                     try { t.pause(); } catch (err) { /* ignore */ }
                     native('onSilentPlayback', startUrl, document.title || '');
@@ -1369,7 +1369,11 @@
             try { return localStorage.getItem('native-movies') !== 'off'; } catch (err) { return true; }
         }
         function isVodUrl(url) {
-            return /\/(movie|series)\//.test(String(url || '').split('?')[0]);
+            var path = String(url || '').split('?')[0];
+            if (!path) return false;
+            // Live channels (/live/, HLS playlists, raw MPEG-TS) stay in the page; any other stream
+            // (movie, series, whatever path or extension the provider uses) is a movie.
+            return !/\/live\//.test(path) && !/\.(m3u8?|ts)$/i.test(path);
         }
         function reportPlaybackError(url, title, code) {
             if (nativeMoviesOn() && isVodUrl(url) && foreground) {
