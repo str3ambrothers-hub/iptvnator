@@ -1381,6 +1381,22 @@
          * Kill switch: localStorage['silent-check'] = 'off'.
          */
         var silenceChecked = {};
+        /**
+         * Movies and episodes (finite duration) go straight to the built-in player as soon as their
+         * length is known, so there is no silent start; live TV stays in the page.
+         * Kill switch: localStorage['native-movies'] = 'off'.
+         */
+        document.addEventListener('loadedmetadata', function (e) {
+            var v = e.target;
+            if (!v || v.tagName !== 'VIDEO' || !foreground) return;
+            try { if (localStorage.getItem('native-movies') === 'off') return; } catch (err) { /* default on */ }
+            if (!isFinite(v.duration) || v.duration < 120) return;
+            var url = api.currentStreamUrl();
+            if (!url || silenceChecked[url]) return;
+            silenceChecked[url] = true;
+            try { v.pause(); } catch (err) { /* ignore */ }
+            native('onSilentPlayback', url, document.title || '');
+        }, true);
         function watchForSilence(v) {
             try { if (localStorage.getItem('silent-check') === 'off') return; } catch (e) { /* default on */ }
             if (v.__tvSilenceWatch) return;
