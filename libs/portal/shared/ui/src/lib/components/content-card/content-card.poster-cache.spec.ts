@@ -61,18 +61,34 @@ describe('ContentCardComponent poster cache', () => {
         );
     });
 
-    it('retries the original address once when the cache fails, then shows the placeholder', () => {
-        document.documentElement.classList.add(POSTER_PROXY_SHELL_CLASS);
-        fixture.detectChanges();
+    it('retries the cached copy twice, then the original address, then shows the placeholder', () => {
+        jest.useFakeTimers();
+        try {
+            document.documentElement.classList.add(POSTER_PROXY_SHELL_CLASS);
+            fixture.detectChanges();
+            const cached = `/api/image?url=${encodeURIComponent(poster)}&w=360`;
 
-        img().triggerEventHandler('error');
-        fixture.detectChanges();
-        expect(img().nativeElement.getAttribute('src')).toBe(poster);
+            img().triggerEventHandler('error');
+            jest.advanceTimersByTime(1500);
+            fixture.detectChanges();
+            expect(img().nativeElement.getAttribute('src')).toBe(`${cached}&r=1`);
 
-        img().triggerEventHandler('error');
-        fixture.detectChanges();
-        expect(img()).toBeNull();
-        expect(placeholder()).not.toBeNull();
+            img().triggerEventHandler('error');
+            jest.advanceTimersByTime(3000);
+            fixture.detectChanges();
+            expect(img().nativeElement.getAttribute('src')).toBe(`${cached}&r=2`);
+
+            img().triggerEventHandler('error');
+            fixture.detectChanges();
+            expect(img().nativeElement.getAttribute('src')).toBe(poster);
+
+            img().triggerEventHandler('error');
+            fixture.detectChanges();
+            expect(img()).toBeNull();
+            expect(placeholder()).not.toBeNull();
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it('gives a new poster a fresh try through the cache', () => {
@@ -80,7 +96,7 @@ describe('ContentCardComponent poster cache', () => {
         fixture.detectChanges();
         img().triggerEventHandler('error');
         fixture.detectChanges();
-
+        // The failed poster's pending retry must not touch the next poster.
         fixture.componentRef.setInput(
             'posterUrl',
             'https://img.example.test/p/two.jpg'
