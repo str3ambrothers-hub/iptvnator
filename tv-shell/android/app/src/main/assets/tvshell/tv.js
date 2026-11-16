@@ -1345,8 +1345,40 @@
                 currentVideo = t;
                 noteMediaUrl(t.currentSrc || t.getAttribute('src'), null, true);
                 lastMediaTitle = document.title;
+                var startUrl = t.currentSrc || t.getAttribute('src');
+                if (t.tagName === 'VIDEO' && nativeMoviesOn() && isVodUrl(startUrl) && claimNative(startUrl)) {
+                    try { t.pause(); } catch (err) { /* ignore */ }
+                    native('onSilentPlayback', startUrl, document.title || '');
+                }
             }
         }, true);
+        var silenceChecked = {};
+        /** True once per URL per 8 s, so one tap opens the player once but a later tap opens it again. */
+        function claimNative(url) {
+            var now = Date.now();
+            if (silenceChecked[url] && now - silenceChecked[url] < 8000) return false;
+            silenceChecked[url] = now;
+            return true;
+        }
+        /**
+         * Xtream movie and episode streams live under /movie/ and /series/. A failure there (a
+         * container the page cannot play, such as MKV) goes straight to the built-in player with no
+         * dialog; everything else keeps the "open in another player?" prompt.
+         */
+        function nativeMoviesOn() {
+            try { return localStorage.getItem('native-movies') !== 'off'; } catch (err) { return true; }
+        }
+        function isVodUrl(url) {
+            return /\/(movie|series)\//.test(String(url || '').split('?')[0]);
+        }
+        function reportPlaybackError(url, title, code) {
+            if (nativeMoviesOn() && isVodUrl(url) && foreground) {
+                if (!claimNative(url)) return;
+                native('onSilentPlayback', url, title || '');
+                return;
+            }
+            native('onPlaybackError', url, title || '', code);
+        }
         var promptedFor = null, promptedRoot = null;
         /** One prompt per load attempt of a URL (the error event and the vjs-error mutation form one attempt). */
         function armPrompt(url, root) {
@@ -1371,7 +1403,7 @@
                 // player would fail the same way.
                 if (!url || code < 3 || !armPrompt(url, t.closest ? t.closest('.video-js') : null)) return;
                 lastMediaTitle = document.title;
-                native('onPlaybackError', url, lastMediaTitle || '', String(code));
+                reportPlaybackError(url, lastMediaTitle || '', String(code));
             }, 400);
         }, true);
         /**
@@ -1380,7 +1412,6 @@
          * decoded audio bytes is offered to the built-in player. Once per URL.
          * Kill switch: localStorage['silent-check'] = 'off'.
          */
-        var silenceChecked = {};
         /**
          * Movies and episodes (finite duration) go straight to the built-in player as soon as their
          * length is known, so there is no silent start; live TV stays in the page.
@@ -1392,8 +1423,7 @@
             try { if (localStorage.getItem('native-movies') === 'off') return; } catch (err) { /* default on */ }
             if (!isFinite(v.duration) || v.duration < 120) return;
             var url = api.currentStreamUrl();
-            if (!url || silenceChecked[url]) return;
-            silenceChecked[url] = true;
+            if (!url || !claimNative(url)) return;
             try { v.pause(); } catch (err) { /* ignore */ }
             native('onSilentPlayback', url, document.title || '');
         }, true);
@@ -1414,8 +1444,7 @@
                 if (v.muted || v.volume === 0) return;
                 if (!isFinite(v.duration) || v.duration < 120) return; // live TV and short clips: skip
                 var url = api.currentStreamUrl();
-                if (!url || silenceChecked[url]) return;
-                silenceChecked[url] = true;
+                if (!url || !claimNative(url)) return;
                 native('onSilentPlayback', url, document.title || '');
             }, 1000);
         }
@@ -1443,7 +1472,7 @@
             var url = api.currentStreamUrl();
             var root = currentVideo && currentVideo.closest ? currentVideo.closest('.video-js') : null;
             if (!url || !armPrompt(url, root)) return;
-            native('onPlaybackError', url, document.title || '', '4');
+            reportPlaybackError(url, document.title || '', '4');
         });
         // video.js never sets the <video> src when no tech accepts the source
         // (raw .ts streams): it flags its root with `vjs-error` instead.
@@ -1457,7 +1486,7 @@
                 var url = videoJsSource();
                 if (!url || !armPrompt(url, el)) continue;
                 lastMediaTitle = document.title;
-                native('onPlaybackError', url, lastMediaTitle || '', '4');
+                reportPlaybackError(url, lastMediaTitle || '', '4');
             }
         });
         vjsObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'], subtree: true });
