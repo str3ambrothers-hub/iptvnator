@@ -27,6 +27,7 @@
     <string name="silent_prompt_message">%1$s\n\nThis device cannot decode the audio of this stream in the built-in browser player. Play it with the built-in video player instead?</string>
     <string name="player_builtin">Built-in player (default)</string>
     <string name="native_player_error">This stream could not be played by the built-in player.</string>
+    <string name="native_player_try_other">Try another app</string>
     <string name="native_player_no_audio">This device cannot decode this video\'s audio, so it may play without sound.</string>
     <string name="external_prompt_cancel">Cancel</string>
     <string name="setting_width">Interface size</string>

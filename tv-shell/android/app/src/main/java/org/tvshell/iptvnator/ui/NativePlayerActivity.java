@@ -75,11 +75,7 @@ public class NativePlayerActivity extends android.app.Activity {
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                Throwable cause = error.getCause();
-                String detail = error.getErrorCodeName() + (cause == null || cause.getMessage() == null ? "" : ": " + cause.getMessage());
-                if (detail.length() > 160) detail = detail.substring(0, 160);
-                Toast.makeText(getApplicationContext(), getString(R.string.native_player_error) + "\n" + detail, Toast.LENGTH_LONG).show();
-                finish();
+                showError(error);
             }
 
             @Override
@@ -100,6 +96,45 @@ public class NativePlayerActivity extends android.app.Activity {
         player.setMediaItem(MediaItem.fromUri(Uri.parse(url)));
         player.setPlayWhenReady(true);
         player.prepare();
+    }
+
+    /** The reason on screen until dismissed (a toast is cut to one line on many devices). */
+    private void showError(PlaybackException error) {
+        if (isFinishing()) return;
+        StringBuilder detail = new StringBuilder(error.getErrorCodeName());
+        Throwable cause = error.getCause();
+        int depth = 0;
+        while (cause != null && depth++ < 3) {
+            detail.append("\n").append(cause.getClass().getSimpleName());
+            if (cause.getMessage() != null) detail.append(": ").append(cause.getMessage());
+            cause = cause.getCause();
+        }
+        if (detail.length() > 600) detail.setLength(600);
+        final String url = getIntent().getStringExtra(EXTRA_URL);
+        final String title = getIntent().getStringExtra(EXTRA_TITLE);
+        new android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.native_player_error)
+            .setMessage(detail.toString())
+            .setPositiveButton(R.string.native_player_try_other, new android.content.DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(android.content.DialogInterface dialog, int which) {
+                    ExternalPlayer.open(NativePlayerActivity.this, url, title, ExternalPlayer.CHOOSER);
+                    finish();
+                }
+            })
+            .setNegativeButton(R.string.external_prompt_cancel, new android.content.DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(android.content.DialogInterface dialog, int which) {
+                    finish();
+                }
+            })
+            .setOnCancelListener(new android.content.DialogInterface.OnCancelListener() {
+                @Override
+                public void onCancel(android.content.DialogInterface dialog) {
+                    finish();
+                }
+            })
+            .show();
     }
 
     @Override
