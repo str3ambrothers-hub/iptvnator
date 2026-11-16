@@ -611,6 +611,8 @@ console.log('9b. under the Android bridge: movies and episodes go straight to th
     const movie = await context.newPage();
     await movie.addInitScript(() => {
         window.__calls = [];
+        // Pages of one context share localStorage: undo the switch section 9 set.
+        try { localStorage.removeItem('native-movies'); } catch (e) { /* ignore */ }
         window.TvShell = { postMessage: (data) => { window.__calls.push(JSON.parse(data).map(String).join(' ')); } };
     });
     await movie.goto(URL_, { waitUntil: 'networkidle' });
