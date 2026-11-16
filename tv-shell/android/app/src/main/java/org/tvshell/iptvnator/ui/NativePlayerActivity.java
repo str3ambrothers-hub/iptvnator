@@ -15,7 +15,9 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
+import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.PlayerView;
 
 import org.tvshell.iptvnator.R;
@@ -61,11 +63,22 @@ public class NativePlayerActivity extends android.app.Activity {
         DefaultRenderersFactory renderers = new DefaultRenderersFactory(this)
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             .setEnableDecoderFallback(true);
-        player = new ExoPlayer.Builder(this, renderers).build();
+        // Providers often redirect http to https (or back) and some refuse unknown clients.
+        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(20_000)
+            .setUserAgent("VLC/3.0.20 LibVLC/3.0.20");
+        player = new ExoPlayer.Builder(this, renderers)
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(this).setDataSourceFactory(http))
+            .build();
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {
-                Toast.makeText(getApplicationContext(), R.string.native_player_error, Toast.LENGTH_LONG).show();
+                Throwable cause = error.getCause();
+                String detail = error.getErrorCodeName() + (cause == null || cause.getMessage() == null ? "" : ": " + cause.getMessage());
+                if (detail.length() > 160) detail = detail.substring(0, 160);
+                Toast.makeText(getApplicationContext(), getString(R.string.native_player_error) + "\n" + detail, Toast.LENGTH_LONG).show();
                 finish();
             }
 
