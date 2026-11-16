@@ -12,6 +12,8 @@ import {
 import {
     computeGridWindow,
     GRID_WINDOW_INITIAL_ITEMS,
+    GRID_WINDOW_OVERSCAN_ROWS,
+    GRID_WINDOW_TOUCH_OVERSCAN_ROWS,
     GridGeometry,
     isGridWindowingEnabled,
     measureGridGeometry,
@@ -63,6 +65,12 @@ export function createGridWindow<T extends object>(
     }
 
     const host: HTMLElement = inject(ElementRef).nativeElement;
+    const view = host.ownerDocument.defaultView;
+    const overscanRows =
+        typeof view?.matchMedia === 'function' &&
+        view.matchMedia('(pointer: coarse)').matches
+            ? GRID_WINDOW_TOUCH_OVERSCAN_ROWS
+            : GRID_WINDOW_OVERSCAN_ROWS;
     const geometry = signal<GridGeometry | null>(null, {
         equal: sameGridGeometry,
     });
@@ -71,7 +79,12 @@ export function createGridWindow<T extends object>(
         () => {
             const measured = geometry();
             return measured
-                ? computeGridWindow(items().length, measured, scrollTop())
+                ? computeGridWindow(
+                      items().length,
+                      measured,
+                      scrollTop(),
+                      overscanRows
+                  )
                 : null;
         },
         { equal: sameGridWindow }
@@ -109,7 +122,19 @@ export function createGridWindow<T extends object>(
             geometry.set(measured);
         }
     };
-    const onScroll = (): void => scrollTop.set(host.scrollTop);
+    // The window follows the scroll events, and a fast fling can leave it
+    // behind with nothing to catch it up: once scrolling pauses, read the
+    // offset and the geometry again from the DOM instead of trusting the
+    // last event. The slow poll below covers an offset change that sent no
+    // event at all.
+    const SETTLE_MS = 150;
+    const WATCHDOG_MS = 400;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = (): void => {
+        scrollTop.set(host.scrollTop);
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(measure, SETTLE_MS);
+    };
     // A held D-pad key moves focus (and scrolls) faster than frames render
     // on a slow TV, and the scroll event only arrives with the next frame.
     // Before the remote layer handles the next key on the grid, bring the
@@ -127,15 +152,20 @@ export function createGridWindow<T extends object>(
     const beforeKey = (event: Event): void => {
         if (host.contains(event.target as Node | null)) synchronize();
     };
-    const view = host.ownerDocument.defaultView;
     const resizeObserver =
         typeof ResizeObserver === 'undefined'
             ? null
             : new ResizeObserver(() => measure());
     resizeObserver?.observe(host);
+    const watchdog = setInterval(() => {
+        if (suspended() || !host.isConnected) return;
+        if (host.scrollTop !== scrollTop()) scrollTop.set(host.scrollTop);
+    }, WATCHDOG_MS);
     host.addEventListener('scroll', onScroll, { passive: true });
     view?.addEventListener('keydown', beforeKey, { capture: true });
     destroyRef.onDestroy(() => {
+        clearTimeout(settleTimer);
+        clearInterval(watchdog);
         resizeObserver?.disconnect();
         host.removeEventListener('scroll', onScroll);
         view?.removeEventListener('keydown', beforeKey, { capture: true });

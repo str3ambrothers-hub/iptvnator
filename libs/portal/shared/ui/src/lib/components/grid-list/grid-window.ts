@@ -13,6 +13,13 @@
 
 /** Rows rendered beyond each edge of the viewport; the rest are spacers. */
 export const GRID_WINDOW_OVERSCAN_ROWS = 3;
+/**
+ * Rows rendered beyond each edge when the device is touch-driven. A finger
+ * fling scrolls far faster than a D-pad, and on a phone the shell draws the
+ * page at desktop width, shrunk, so one swipe covers many more page pixels:
+ * three spare rows run out before the next render, leaving blank space.
+ */
+export const GRID_WINDOW_TOUCH_OVERSCAN_ROWS = 8;
 /** Cards rendered before the first measurement (one screen, two rows). */
 export const GRID_WINDOW_INITIAL_ITEMS = 60;
 /** Class the TV shell sets on `<html>`; windowing is gated on it. */
