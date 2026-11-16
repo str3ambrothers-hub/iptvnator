@@ -20,6 +20,8 @@ try {
     assert.ok(device, 'Emulator was not found.');
     const page = await (await device.webView({ pkg: 'org.tvshell.iptvnator' })).page();
     await page.waitForLoadState('domcontentloaded');
+    // This suite plays a /movie/ URL in the page; keep it there instead of the built-in player.
+    await page.evaluate(() => localStorage.setItem('native-movies', 'off'));
     const trailerUrl = 'https://www.youtube-nocookie.com/embed/synthetic-trailer';
     await page.route(trailerUrl, (route) => route.fulfill({
         contentType: 'text/html',
