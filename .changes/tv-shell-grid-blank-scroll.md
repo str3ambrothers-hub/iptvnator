@@ -3,4 +3,4 @@ type: fix
 area: tv-shell
 ---
 
-On touch devices, the poster grid no longer stays blank after a fast scroll: it keeps more rows ready around the screen and refreshes itself when scrolling stops.
+On a touch screen, the poster grid no longer goes blank after a fast scroll: it draws every loaded row as a normal browser would. Remote-driven TVs keep the lighter window.

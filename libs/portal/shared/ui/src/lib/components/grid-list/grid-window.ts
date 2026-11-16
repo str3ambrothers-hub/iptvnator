@@ -8,7 +8,8 @@
  *
  * Active in the TV shell only for now (its `tv.js` puts the `tv-shell` class
  * on `<html>` before the app boots), where every D-pad press measures every
- * rendered card. Kill switch: `localStorage['grid-list:windowing'] = 'off'`.
+ * rendered card. Not on touch screens (see `isTouchDriven`). Override:
+ * `localStorage['grid-list:windowing']` = `'off'` or `'on'`.
  */
 
 /** Rows rendered beyond each edge of the viewport; the rest are spacers. */
@@ -53,11 +54,30 @@ export function isGridWindowingEnabled(doc: Document | null): boolean {
         return false;
     }
     try {
-        const storage = doc.defaultView?.localStorage;
-        return storage?.getItem(GRID_WINDOW_KILL_SWITCH_KEY) !== 'off';
+        // An explicit 'on' / 'off' always wins over the device check below.
+        const mode = doc.defaultView?.localStorage?.getItem(
+            GRID_WINDOW_KILL_SWITCH_KEY
+        );
+        if (mode === 'off') return false;
+        if (mode === 'on') return true;
     } catch {
-        return true;
+        // No storage: decide from the device.
     }
+    return !isTouchDriven(doc);
+}
+
+/**
+ * A touch screen as the main pointer (a phone running the shell). A finger
+ * fling outruns the window and the grid stayed blank until the next render,
+ * so touch devices draw the grid as the browser does: every loaded row, with
+ * `content-visibility: auto` on the cards. Remote-driven TVs keep windowing.
+ */
+export function isTouchDriven(doc: Document): boolean {
+    const view = doc.defaultView;
+    return (
+        typeof view?.matchMedia === 'function' &&
+        view.matchMedia('(pointer: coarse)').matches
+    );
 }
 
 /**

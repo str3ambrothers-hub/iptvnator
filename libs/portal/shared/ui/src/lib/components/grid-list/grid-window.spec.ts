@@ -147,6 +147,31 @@ describe('isGridWindowingEnabled', () => {
 
         expect(isGridWindowingEnabled(document)).toBe(true);
     });
+
+    describe('on a touch screen', () => {
+        const originalMatchMedia = window.matchMedia;
+
+        beforeEach(() => {
+            document.documentElement.classList.add('tv-shell');
+            window.matchMedia = jest.fn((query: string) => ({
+                matches: query === '(pointer: coarse)',
+            })) as unknown as typeof window.matchMedia;
+        });
+
+        afterEach(() => {
+            window.matchMedia = originalMatchMedia;
+        });
+
+        it('draws the whole grid instead of a window', () => {
+            expect(isGridWindowingEnabled(document)).toBe(false);
+        });
+
+        it("can be forced back on with the 'on' override", () => {
+            localStorage.setItem(GRID_WINDOW_KILL_SWITCH_KEY, 'on');
+
+            expect(isGridWindowingEnabled(document)).toBe(true);
+        });
+    });
 });
 
 describe('measureGridGeometry', () => {
