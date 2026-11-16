@@ -438,6 +438,9 @@ console.log('9. under the Android bridge: the screen follows playback, error cod
     const bridged = await context.newPage();
     await bridged.addInitScript(() => {
         window.__calls = [];
+        // These checks cover the page player's own prompts; movies going straight to the built-in
+        // player is checked in 9b.
+        try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ }
         window.TvShell = { postMessage: (data) => { window.__calls.push(JSON.parse(data).map(String).join(' ')); } };
     });
     await bridged.goto(URL_, { waitUntil: 'networkidle' });
@@ -603,6 +606,54 @@ console.log('9. under the Android bridge: the screen follows playback, error cod
     await bridged.close();
 }
 
+console.log('9b. under the Android bridge: movies and episodes go straight to the built-in player');
+{
+    const movie = await context.newPage();
+    await movie.addInitScript(() => {
+        window.__calls = [];
+        window.TvShell = { postMessage: (data) => { window.__calls.push(JSON.parse(data).map(String).join(' ')); } };
+    });
+    await movie.goto(URL_, { waitUntil: 'networkidle' });
+    await movie.waitForTimeout(1500);
+    const r = await movie.evaluate(async (provider) => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const out = {};
+        const calls = () => window.__calls.filter((c) => /^(onSilentPlayback|onPlaybackError) /.test(c)).map((c) => c.split(' ')[0]);
+        const v = document.createElement('video');
+        v.muted = true;
+        v.src = provider + '/movie/user/pass/clip.webm';
+        document.body.appendChild(v);
+        await v.play().catch(() => null);
+        await wait(600);
+        out.movie = calls();
+        // A format error on a movie opens the built-in player instead of asking.
+        const w = document.createElement('video');
+        w.src = provider + '/series/user/pass/9.mkv';
+        document.body.appendChild(w);
+        window.__calls.length = 0;
+        Object.defineProperty(w, 'error', { configurable: true, get: () => ({ code: 4 }) });
+        w.dispatchEvent(new Event('play'));
+        w.dispatchEvent(new Event('error'));
+        await wait(1200);
+        out.episode = calls();
+        // Live TV keeps the prompt.
+        const l = document.createElement('video');
+        l.src = provider + '/live/user/pass/7.m3u8';
+        document.body.appendChild(l);
+        window.__calls.length = 0;
+        Object.defineProperty(l, 'error', { configurable: true, get: () => ({ code: 4 }) });
+        l.dispatchEvent(new Event('play'));
+        l.dispatchEvent(new Event('error'));
+        await wait(1200);
+        out.live = calls();
+        return out;
+    }, PROVIDER);
+    check(r.movie.join(',') === 'onSilentPlayback', 'a movie goes to the built-in player when it starts: ' + r.movie.join(','));
+    check(r.episode.join(',').startsWith('onSilentPlayback') && !r.episode.join(',').includes('onPlaybackError'),
+        'a format error on an episode opens the built-in player, not the prompt: ' + r.episode.join(','));
+    check(r.live.join(',') === 'onPlaybackError', 'live TV keeps the prompt: ' + r.live.join(','));
+    await movie.close();
+}
 console.log('10. D-pad robustness: queued repeats, snack bars, animated rails');
 {
     const r = await page.evaluate(() => {
