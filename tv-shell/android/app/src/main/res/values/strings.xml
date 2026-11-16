@@ -23,6 +23,11 @@
     <string name="external_prompt_title_error">This stream cannot be played here</string>
     <string name="external_prompt_message">%1$s\n\nThe built-in browser player does not support this stream format. Open it in an installed video player (VLC, …)?</string>
     <string name="external_prompt_open">Open in a player</string>
+    <string name="silent_prompt_title">No sound in this video?</string>
+    <string name="silent_prompt_message">%1$s\n\nThis device cannot decode the audio of this stream in the built-in browser player. Play it with the built-in video player instead?</string>
+    <string name="player_builtin">Built-in player (default)</string>
+    <string name="native_player_error">This stream could not be played by the built-in player.</string>
+    <string name="native_player_no_audio">This device cannot decode this video\'s audio, so it may play without sound.</string>
     <string name="external_prompt_cancel">Cancel</string>
     <string name="setting_width">Interface size</string>
     <string name="setting_width_hint">Width of the web layout. Larger text means less content per screen.</string>

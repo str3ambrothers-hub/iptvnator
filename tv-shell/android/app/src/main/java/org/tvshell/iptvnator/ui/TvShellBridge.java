@@ -41,6 +41,12 @@ final class TvShellBridge {
                 if (command.equals("openExternal")) activity.openExternal(url, title);
                 else activity.offerExternal(url, title, command.equals("onPlaybackError"));
                 break;
+            case "onSilentPlayback":
+                String silentUrl = stringAt(args, 1);
+                String silentTitle = stringAt(args, 2);
+                if (silentUrl == null || silentTitle == null) return;
+                activity.offerForSilence(silentUrl, silentTitle);
+                break;
             case "setKeepScreenOn":
                 if (args.size() > 1 && args.get(1) instanceof Boolean) {
                     activity.setKeepScreenOn((Boolean) args.get(1));

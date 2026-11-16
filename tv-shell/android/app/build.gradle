@@ -78,4 +78,9 @@ dependencies {
     // java.io.tmpdir, which on Android is the app-private cache dir. Request bodies are
     // capped in TvShellServer before NanoHTTPD parses them.
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
+    // Built-in player: Media3 (Apache-2.0) using the device's own hardware decoders only. No
+    // FFmpeg/software decoder extension on purpose (GPL), so the APK can be handed to others.
+    implementation 'androidx.media3:media3-exoplayer:1.6.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.6.1'
+    implementation 'androidx.media3:media3-ui:1.6.1'
 }

@@ -1374,6 +1374,35 @@
                 native('onPlaybackError', url, lastMediaTitle || '', String(code));
             }, 400);
         }, true);
+        /**
+         * A movie whose audio the WebView cannot decode (AC3, DTS, ...) plays fine but silent, which
+         * raises no error. After a few seconds of real playback, a finite, unmuted video with zero
+         * decoded audio bytes is offered to the built-in player. Once per URL.
+         * Kill switch: localStorage['silent-check'] = 'off'.
+         */
+        var silenceChecked = {};
+        function watchForSilence(v) {
+            try { if (localStorage.getItem('silent-check') === 'off') return; } catch (e) { /* default on */ }
+            if (v.__tvSilenceWatch) return;
+            v.__tvSilenceWatch = true;
+            var startedAt = null, ticks = 0;
+            var timer = setInterval(function () {
+                if (!v.isConnected || ++ticks > 20) { clearInterval(timer); v.__tvSilenceWatch = false; return; }
+                if (v.paused || v.seeking || v.readyState < 3) { startedAt = null; return; }
+                if (startedAt === null) startedAt = v.currentTime;
+                if (v.currentTime - startedAt < 5) return;
+                clearInterval(timer);
+                v.__tvSilenceWatch = false;
+                var decoded = v.webkitAudioDecodedByteCount;
+                if (typeof decoded !== 'number' || decoded > 0) return; // unsupported property or audio is flowing
+                if (v.muted || v.volume === 0) return;
+                if (!isFinite(v.duration) || v.duration < 120) return; // live TV and short clips: skip
+                var url = api.currentStreamUrl();
+                if (!url || silenceChecked[url]) return;
+                silenceChecked[url] = true;
+                native('onSilentPlayback', url, document.title || '');
+            }, 1000);
+        }
         // The screen stays on only while something plays (the shell holds no wake lock otherwise).
         ['playing', 'pause', 'ended', 'emptied'].forEach(function (type) {
             document.addEventListener(type, function (e) {
@@ -1388,6 +1417,7 @@
                     });
                 }
                 if (type === 'playing' && t.tagName === 'VIDEO') dropVjsSeekBar(t);
+                if (type === 'playing' && t.tagName === 'VIDEO') watchForSilence(t);
                 syncKeepScreenOn(type === 'playing');
             }, true);
         });

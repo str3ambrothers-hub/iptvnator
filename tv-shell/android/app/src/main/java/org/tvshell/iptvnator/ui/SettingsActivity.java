@@ -62,9 +62,13 @@ public class SettingsActivity extends Activity {
 
         // Preferred external player
         final RadioGroup playerGroup = findViewById(R.id.player_group);
+        RadioButton builtin = new RadioButton(this);
+        builtin.setText(R.string.player_builtin);
+        builtin.setTag("");
+        playerGroup.addView(builtin);
         RadioButton chooser = new RadioButton(this);
         chooser.setText(R.string.player_system_chooser);
-        chooser.setTag("");
+        chooser.setTag(ExternalPlayer.CHOOSER);
         playerGroup.addView(chooser);
         String preferred = prefs.externalPlayerPackage();
         boolean matched = false;
@@ -79,7 +83,11 @@ public class SettingsActivity extends Activity {
                 matched = true;
             }
         }
-        if (!matched) chooser.setChecked(true);
+        if (ExternalPlayer.CHOOSER.equals(preferred)) {
+            chooser.setChecked(true);
+        } else if (!matched) {
+            builtin.setChecked(true);
+        }
         if (players.isEmpty()) {
             findViewById(R.id.player_hint).setVisibility(View.VISIBLE);
         }

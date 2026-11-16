@@ -28,6 +28,9 @@ public final class ExternalPlayer {
         }
     }
 
+    /** Stored preference meaning "ask the system which app" (empty/unset means the built-in player). */
+    public static final String CHOOSER = "chooser";
+
     private ExternalPlayer() {
     }
 
@@ -71,7 +74,8 @@ public final class ExternalPlayer {
     /** @return true when a player was launched. */
     public static boolean open(Context context, String url, String title, String preferredPackage) {
         Intent intent = viewIntent(url, title == null ? "" : title);
-        if (preferredPackage != null && !preferredPackage.isEmpty()) intent.setPackage(preferredPackage);
+        boolean named = preferredPackage != null && !preferredPackage.isEmpty() && !CHOOSER.equals(preferredPackage);
+        if (named) intent.setPackage(preferredPackage);
         try {
             context.startActivity(intent);
             return true;
@@ -79,7 +83,7 @@ public final class ExternalPlayer {
             // ActivityNotFoundException, but also SecurityException (the player's activity is no
             // longer exported) or a too-large transaction: none of them may take the shell down.
             Log.w(ShellApp.TAG, "external player launch failed: " + DiagnosticRedactor.redact(e.toString()));
-            if (preferredPackage != null && !preferredPackage.isEmpty()) {
+            if (named) {
                 // The preferred app is gone or refuses: fall back to the system chooser.
                 intent.setPackage(null);
                 try {
