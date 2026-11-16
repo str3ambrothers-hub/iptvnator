@@ -1376,8 +1376,10 @@
             return !/\/live\//.test(path) && !/\.(m3u8?|ts)$/i.test(path);
         }
         function reportPlaybackError(url, title, code) {
-            if (nativeMoviesOn() && isVodUrl(url) && foreground) {
-                if (!claimNative(url)) return;
+            if (nativeMoviesOn() && isVodUrl(url)) {
+                // While the built-in player is on screen the page is in the background: its late
+                // errors must not raise the old "open in another player?" dialog behind it.
+                if (!foreground || !claimNative(url)) return;
                 native('onSilentPlayback', url, title || '');
                 return;
             }
