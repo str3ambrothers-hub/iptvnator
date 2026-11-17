@@ -69,6 +69,9 @@ public class NativePlayerActivity extends android.app.Activity {
     }
 
     private boolean softwareDecoders;
+    /** The stream's formats as announced by the tracks: the player drops its own when a decoder fails. */
+    private androidx.media3.common.Format seenVideo;
+    private androidx.media3.common.Format seenAudio;
 
     /**
      * Builds the player. First with the device's preferred (usually hardware) decoders; when one of
@@ -112,6 +115,8 @@ public class NativePlayerActivity extends android.app.Activity {
                 boolean audioPresent = false;
                 boolean audioPlayable = false;
                 for (Tracks.Group group : tracks.getGroups()) {
+                    if (group.length > 0 && group.getType() == C.TRACK_TYPE_VIDEO) seenVideo = group.getTrackFormat(0);
+                    if (group.length > 0 && group.getType() == C.TRACK_TYPE_AUDIO && seenAudio == null) seenAudio = group.getTrackFormat(0);
                     if (group.getType() != C.TRACK_TYPE_AUDIO) continue;
                     audioPresent = true;
                     if (group.isSupported()) audioPlayable = true;
@@ -156,7 +161,7 @@ public class NativePlayerActivity extends android.app.Activity {
             if (cause.getMessage() != null) detail.append(": ").append(cause.getMessage());
             cause = cause.getCause();
         }
-        androidx.media3.common.Format video = player == null ? null : player.getVideoFormat();
+        androidx.media3.common.Format video = seenVideo != null ? seenVideo : (player == null ? null : player.getVideoFormat());
         if (video != null) {
             detail.append("\n\nVideo: ").append(video.sampleMimeType)
                 .append(" ").append(video.codecs)
@@ -164,7 +169,7 @@ public class NativePlayerActivity extends android.app.Activity {
                 .append(" ").append(video.frameRate > 0 ? Math.round(video.frameRate) + "fps" : "")
                 .append(video.colorInfo == null ? "" : " " + video.colorInfo);
         }
-        androidx.media3.common.Format audio = player == null ? null : player.getAudioFormat();
+        androidx.media3.common.Format audio = seenAudio != null ? seenAudio : (player == null ? null : player.getAudioFormat());
         if (audio != null) detail.append("\nAudio: ").append(audio.sampleMimeType).append(" ").append(audio.channelCount).append("ch");
         if (softwareDecoders) detail.append("\n(software decoder tried)");
         if (detail.length() > 900) detail.setLength(900);
