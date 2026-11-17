@@ -156,7 +156,18 @@ public class NativePlayerActivity extends android.app.Activity {
             if (cause.getMessage() != null) detail.append(": ").append(cause.getMessage());
             cause = cause.getCause();
         }
-        if (detail.length() > 600) detail.setLength(600);
+        androidx.media3.common.Format video = player == null ? null : player.getVideoFormat();
+        if (video != null) {
+            detail.append("\n\nVideo: ").append(video.sampleMimeType)
+                .append(" ").append(video.codecs)
+                .append(" ").append(video.width).append("x").append(video.height)
+                .append(" ").append(video.frameRate > 0 ? Math.round(video.frameRate) + "fps" : "")
+                .append(video.colorInfo == null ? "" : " " + video.colorInfo);
+        }
+        androidx.media3.common.Format audio = player == null ? null : player.getAudioFormat();
+        if (audio != null) detail.append("\nAudio: ").append(audio.sampleMimeType).append(" ").append(audio.channelCount).append("ch");
+        if (softwareDecoders) detail.append("\n(software decoder tried)");
+        if (detail.length() > 900) detail.setLength(900);
         final String url = getIntent().getStringExtra(EXTRA_URL);
         final String title = getIntent().getStringExtra(EXTRA_TITLE);
         new android.app.AlertDialog.Builder(this)
