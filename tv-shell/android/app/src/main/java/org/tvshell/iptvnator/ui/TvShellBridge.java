@@ -65,6 +65,9 @@ final class TvShellBridge {
             case "showKeyboard":
                 activity.showKeyboard();
                 break;
+            case "hideKeyboard":
+                activity.hideKeyboard();
+                break;
             case "openSettings":
                 activity.openSettings();
                 break;

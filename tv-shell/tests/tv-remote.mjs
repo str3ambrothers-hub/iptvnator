@@ -656,6 +656,43 @@ console.log('9b. under the Android bridge: movies and episodes go straight to th
     check(r.live.join(',') === 'onPlaybackError', 'live TV keeps the prompt: ' + r.live.join(','));
     await movie.close();
 }
+console.log('9c. remote reaches an error screen\'s buttons and a list row\'s menu');
+{
+    const p = await context.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
+    await p.goto(URL_, { waitUntil: 'networkidle' });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => {
+        document.body.innerHTML = `
+          <header style="position:fixed;left:300px;top:60px"><button id="sort">Sort</button></header>
+          <nav style="position:fixed;left:0;top:100px"><a href="#a" id="rail1">Rail 1</a><br><a href="#b" id="rail2">Rail 2</a></nav>
+          <main tabindex="-1" style="position:fixed;left:600px;top:400px">
+            <button id="retry">Retry</button>
+          </main>`;
+    });
+    await p.focus('#sort');
+    await p.keyboard.press('ArrowDown');
+    await p.waitForTimeout(300);
+    const first = await p.evaluate(() => document.activeElement.id);
+    check(first === 'retry', 'Down from the header reaches the error screen\'s Retry, not a rail icon: ' + first);
+
+    await p.evaluate(() => {
+        window.__menuClicks = 0;
+        document.body.innerHTML = `
+          <div style="position:fixed;left:100px;top:100px">
+            <input id="combo" role="combobox" aria-expanded="true" aria-activedescendant="row1" value="">
+            <div role="option" id="row1">Playlist <span aria-hidden="true" aria-haspopup="menu" style="display:inline-block;width:30px;height:30px" id="more">more</span></div>
+          </div>`;
+        document.getElementById('more').addEventListener('click', () => { window.__menuClicks++; });
+    });
+    await p.focus('#combo');
+    await p.evaluate(() => window.__tvShell.menu()); // what the remote's Menu key calls
+    await p.waitForTimeout(200);
+    const clicks = await p.evaluate(() => window.__menuClicks);
+    check(clicks === 1, 'Menu on the list field opens the active row\'s menu: ' + clicks);
+    await p.close();
+}
+
 console.log('10. D-pad robustness: queued repeats, snack bars, animated rails');
 {
     const r = await page.evaluate(() => {

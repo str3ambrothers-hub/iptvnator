@@ -693,6 +693,13 @@ public class MainActivity extends Activity {
         imm.showSoftInput(inputView, InputMethodManager.SHOW_IMPLICIT);
     }
 
+    void hideKeyboard() {
+        if (webView == null || isFinishing()) return;
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        View inputView = customView != null ? customView : webView;
+        if (imm != null) imm.hideSoftInputFromWindow(inputView.getWindowToken(), 0);
+    }
+
     void openSettings() {
         startActivity(new Intent(this, SettingsActivity.class));
     }

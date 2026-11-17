@@ -449,6 +449,13 @@
         }, 0);
     }
 
+    function closeKeyboardSoon(el) {
+        setTimeout(function () {
+            native('hideKeyboard');
+            if (document.activeElement === el && el.isConnected) holdKeyboard(el);
+        }, 60);
+    }
+
     function setFocus(el, opts) {
         var previous = document.querySelectorAll('.' + FOCUS_CLASS);
         for (var i = 0; i < previous.length; i++) previous[i].classList.remove(FOCUS_CLASS);
@@ -577,6 +584,17 @@
         // that list's selected entry, else its first, instead of whichever entry is level with the
         // source: the Live TV rail icon sits beside the 4th category.
         if (next && exclude && (dir === 'left' || dir === 'right')) next = { el: listEntry(next.el, exclude) };
+        // Right/Down from the header, the rail or a disabled list into a main area whose only
+        // targets are not level with the source (an error screen's Retry, an empty state):
+        // reach them rather than the nearest rail icon.
+        if (next && exclude && scope === document && (dir === 'right' || dir === 'down')) {
+            var mainArea = document.querySelector('main,[role="main"]');
+            if (mainArea && !mainArea.contains(exclude) && !mainArea.contains(next.el) &&
+                !beamsOverlap(dir, src, next.el.getBoundingClientRect())) {
+                var inMain = findNext(dir, src, mainArea, exclude);
+                if (inMain) next = inMain;
+            }
+        }
         // Channel list beside a preview player: keep the row's own actions reachable. When
         // Right leaves the row, prefer the picture over unrelated controls beside the list.
         // Left from that picture returns to the playing channel, not an overlay button in its
@@ -851,9 +869,13 @@
                     // First OK on a field reached with the D-pad: open the keyboard, don't submit.
                     event.preventDefault();
                     event.stopImmediatePropagation();
+                    openKeyboard(active);
+                    return;
                 }
-                openKeyboard(active);
-                return; // otherwise let the app submit on Enter if it wants to
+                // The keyboard is already open: this Enter is its Search/Done key. The app
+                // submits it; the keyboard then closes and the field returns to the remote's focus.
+                closeKeyboardSoon(active);
+                return;
             }
             // Android's DPAD_CENTER maps to Enter. Native checkboxes/radios only activate
             // with Space in a browser, so handle OK explicitly and prevent form submission.
@@ -1003,6 +1025,22 @@
         }
         if (active.tagName === 'VIDEO' || active.tagName === 'AUDIO') {
             return api.openExternal();
+        }
+        // A combobox list (the playlist switcher) keeps focus in its search field while a row is
+        // highlighted: Menu opens that row's own menu (Refresh, Info, Remove ...), as its "..." icon does.
+        if (active.tagName === 'INPUT' && active.getAttribute('role') === 'combobox') {
+            var rowId = active.getAttribute('aria-activedescendant');
+            var row = rowId ? document.getElementById(rowId) : null;
+            var rowTrigger = row && row.querySelector('[aria-haspopup="menu"]');
+            if (rowTrigger) {
+                rowTrigger.click();
+                setTimeout(function () {
+                    var pane = document.querySelector('.cdk-overlay-pane [role="menu"]');
+                    var first = pane && pane.querySelector('[role="menuitem"]:not([disabled])');
+                    if (first) setFocus(first, { silent: true });
+                }, 150);
+                return true;
+            }
         }
         var keyboard = new KeyboardEvent('keydown', { key: 'ContextMenu', code: 'ContextMenu', bubbles: true, cancelable: true });
         if (active.dispatchEvent(keyboard)) {
