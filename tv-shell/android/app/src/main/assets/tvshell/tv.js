@@ -1021,7 +1021,7 @@
 
 
     // ---------------------------------------------------------------- diagnostics
-    /** Menu pressed three times quickly shows frame rate, memory and page size; OK toggles native live TV. */
+    /** Menu pressed five times quickly shows frame rate, memory and page size; OK toggles native live TV. */
     var diag = { el: null, raf: 0, frames: 0, since: 0, fps: 0, worst: 0, lastFrame: 0, timer: 0, presses: [] };
     function nativeLiveOn() {
         try { return localStorage.getItem('native-live') === 'on'; } catch (err) { return false; }
@@ -1031,7 +1031,7 @@
         var heap = mem ? Math.round(mem.usedJSHeapSize / 1048576) + ' MB' : 'n/a';
         return 'FPS ' + diag.fps + '   worst frame ' + Math.round(diag.worst) + ' ms\n' +
             'JS heap ' + heap + '   DOM nodes ' + document.getElementsByTagName('*').length + '\n' +
-            'Native live TV: ' + (nativeLiveOn() ? 'ON' : 'off') + '  (OK toggles, Menu x3 closes)';
+            'Native live TV: ' + (nativeLiveOn() ? 'ON' : 'off') + '  (OK toggles, Menu x5 closes)';
     }
     function diagFrame(now) {
         if (!diag.el) return;
@@ -1077,7 +1077,7 @@
         var now = Date.now();
         diag.presses = diag.presses.filter(function (t) { return now - t < 1500; });
         diag.presses.push(now);
-        if (diag.presses.length < 3) return false;
+        if (diag.presses.length < 5) return false;
         diag.presses = [];
         toggleDiag();
         return true;
