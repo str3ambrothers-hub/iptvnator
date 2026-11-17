@@ -52,6 +52,25 @@ import {
     CATALOGUE_REVALIDATE_AFTER_MS,
     createCatalogueStore,
 } from './pwa-catalogue-store';
+
+const SEARCH_CHUNK = 4000;
+
+function itemTitle(item: XtreamCachedContentItem): string {
+    return item.name || item.title || item.stream_display_name || '';
+}
+
+function titleMatches(item: XtreamCachedContentItem, needle: string): boolean {
+    return foldSearchText(itemTitle(item)).includes(needle);
+}
+
+/** Kill switch: `localStorage['search-index'] = 'off'` (TV shell search keeps its old path). */
+function searchIndexEnabled(doc: Document | null): boolean {
+    try {
+        return doc?.defaultView?.localStorage?.getItem('search-index') !== 'off';
+    } catch {
+        return true;
+    }
+}
 import { PwaCollectionStorage } from './pwa-collection-storage';
 import { PwaCollectionCatalog } from './pwa-collection-catalog';
 import type { XtreamCachedContentItem } from './pwa-cached-content';
@@ -98,6 +117,12 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
     private playlistPasswords = new Map<string, string>();
     /** Saved catalogues (TV shell only, inert elsewhere): the next launch starts from them. */
     private readonly catalogueStore = createCatalogueStore(inject(DOCUMENT));
+    private readonly document = inject(DOCUMENT);
+    /** Folded titles per catalogue array (weak: dropped with the array). */
+    private readonly foldedIndex = new WeakMap<
+        readonly XtreamCachedContentItem[],
+        string[]
+    >();
 
     // =========================================================================
     // Playlist Operations (user data storage)
@@ -551,6 +576,7 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
             // Read from the device, not a provider import: no "syncing" dialog.
             options?.onPhaseChange?.('loading-cached');
             this.contentCache.set(cacheKey, saved.items);
+            this.warmSearchIndex(cacheKey);
             onTotal?.(saved.items.length);
             onProgress?.(saved.items.length);
             if (saved.ageMs > CATALOGUE_REVALIDATE_AFTER_MS) {
@@ -606,6 +632,7 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
 
         // Cache in memory
         this.contentCache.set(cacheKey, content);
+        this.warmSearchIndex(cacheKey);
         this.catalogueStore.saveLater(cacheKey, content);
 
         return this.withoutLockedContent(playlistId, type, content);
@@ -637,6 +664,30 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
     // Search Operations (in-memory filter)
     // =========================================================================
 
+    /** Builds the search index in the background once the first screen has settled. */
+    private warmSearchIndex(cacheKey: string): void {
+        if (!searchIndexEnabled(this.document)) return;
+        setTimeout(() => {
+            const content = this.contentCache.get(cacheKey);
+            if (content) this.foldedTitles(content, true);
+        }, 3000);
+    }
+
+    /** Folded titles for `content`, built once per list and reused by every search. */
+    private foldedTitles(
+        content: readonly XtreamCachedContentItem[],
+        enabled: boolean
+    ): string[] | null {
+        if (!enabled) return null;
+        const known = this.foldedIndex.get(content);
+        if (known) return known;
+        const folded = content.map((item) =>
+            foldSearchText(itemTitle(item))
+        );
+        this.foldedIndex.set(content, folded);
+        return folded;
+    }
+
     async searchContent(
         playlistId: string,
         searchTerm: string,
@@ -649,21 +700,34 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
 
         for (const type of types) {
             const cacheKey = `${playlistId}-${type}-content`;
+            const raw = this.contentCache.get(cacheKey) || [];
             // Same lock boundary as the catalog read: a search must not
             // surface rows the category list withholds.
-            const content = this.withoutLockedContent(
+            const withheld = this.withheldCategoryIds(
                 playlistId,
-                type as StreamType,
-                this.contentCache.get(cacheKey) || []
+                type as StreamType
+            );
+            const folded = this.foldedTitles(
+                raw,
+                searchIndexEnabled(this.document)
             );
 
-            const filtered = content.filter((item) => {
-                const title =
-                    item.name || item.title || item.stream_display_name || '';
-                return foldSearchText(title).includes(searchLower);
-            });
-
-            results.push(...filtered);
+            for (let i = 0; i < raw.length; i++) {
+                const item = raw[i];
+                if (
+                    (withheld.size === 0 ||
+                        !withheld.has(canonicalCategoryId(item.category_id))) &&
+                    (folded
+                        ? folded[i].includes(searchLower)
+                        : titleMatches(item, searchLower))
+                ) {
+                    results.push(item);
+                }
+                // Yield now and then so typing and scrolling stay responsive.
+                if (folded && i % SEARCH_CHUNK === SEARCH_CHUNK - 1) {
+                    await new Promise<void>((r) => setTimeout(r, 0));
+                }
+            }
         }
 
         return results as XtreamContentItem[];

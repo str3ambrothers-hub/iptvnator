@@ -3,6 +3,7 @@ import {
     CATALOGUE_CACHE_SHELL_CLASS,
     CATALOGUE_MAX_AGE_MS,
     CatalogueStore,
+    slimCatalogueItem,
     createCatalogueStore,
     isCatalogueCacheEnabled,
     type CatalogueBackend,
@@ -191,5 +192,48 @@ describe('isCatalogueCacheEnabled', () => {
 
         localStorage.setItem(CATALOGUE_CACHE_KILL_SWITCH_KEY, 'off');
         expect(isCatalogueCacheEnabled(document)).toBe(false);
+    });
+});
+
+describe('slimmed saving', () => {
+    const heavy = {
+        stream_id: 7,
+        name: 'Sample Seven',
+        stream_icon: 'https://img.example.test/7.jpg',
+        container_extension: 'mkv',
+        plot: 'long text',
+        cast: 'A, B',
+        genre: 'Drama',
+        backdrop_path: ['x'],
+    };
+
+    it('drops detail-only fields and keeps playback and grid fields', () => {
+        expect(slimCatalogueItem(heavy)).toEqual({
+            stream_id: 7,
+            name: 'Sample Seven',
+            stream_icon: 'https://img.example.test/7.jpg',
+            container_extension: 'mkv',
+        });
+        expect(heavy.plot).toBe('long text');
+    });
+
+    it('returns rows without heavy fields untouched', () => {
+        const row = { stream_id: 1 };
+        expect(slimCatalogueItem(row)).toBe(row);
+    });
+
+    it('saves slim rows, or full rows with the switch off', async () => {
+        const mem = new MemoryBackend();
+        await new CatalogueStore(mem, () => 1).save('a-movie-content', [heavy]);
+        await new CatalogueStore(mem, () => 1, false).save('b-movie-content', [
+            heavy,
+        ]);
+
+        expect(mem.data.get('a-movie-content')?.items[0]).not.toHaveProperty(
+            'plot'
+        );
+        expect(mem.data.get('b-movie-content')?.items[0]).toHaveProperty(
+            'plot'
+        );
     });
 });

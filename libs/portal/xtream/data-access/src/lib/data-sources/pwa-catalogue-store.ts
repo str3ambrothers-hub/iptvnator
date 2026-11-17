@@ -13,6 +13,56 @@
 
 export const CATALOGUE_CACHE_SHELL_CLASS = 'tv-shell';
 export const CATALOGUE_CACHE_KILL_SWITCH_KEY = 'catalogue-cache';
+/** Kill switch for saving slimmed rows: `localStorage['catalogue-slim'] = 'off'`. */
+export const CATALOGUE_SLIM_KILL_SWITCH_KEY = 'catalogue-slim';
+
+/**
+ * Provider fields no list, grid or search screen reads (detail screens fetch
+ * their own info). Dropping them from the saved copy cuts storage, parse time
+ * and memory on small devices.
+ */
+const SLIM_DROPPED_FIELDS: readonly string[] = [
+    'plot',
+    'cast',
+    'director',
+    'genre',
+    'description',
+    'youtube_trailer',
+    'backdrop_path',
+    'episode_run_time',
+    'custom_sid',
+    'direct_source',
+    'category_ids',
+    'rating_5based',
+    'thumbnail',
+    'num',
+];
+
+/** A copy of `item` without the heavy fields; rows without any are returned as is. */
+export function slimCatalogueItem<T>(item: T): T {
+    if (!item || typeof item !== 'object') return item;
+    const row = item as Record<string, unknown>;
+    let copy: Record<string, unknown> | null = null;
+    for (const field of SLIM_DROPPED_FIELDS) {
+        if (field in row) {
+            copy ??= { ...row };
+            delete copy[field];
+        }
+    }
+    return (copy ?? row) as T;
+}
+
+export function isSlimSavingEnabled(doc: Document | null): boolean {
+    try {
+        return (
+            doc?.defaultView?.localStorage?.getItem(
+                CATALOGUE_SLIM_KILL_SWITCH_KEY
+            ) !== 'off'
+        );
+    } catch {
+        return true;
+    }
+}
 /** A saved catalogue older than this is ignored and deleted. */
 export const CATALOGUE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 /** A saved catalogue older than this is served, then refreshed in the background. */
@@ -135,13 +185,16 @@ export class CatalogueStore {
     private readonly backend: CatalogueBackend | null;
     private readonly now: () => number;
     private readonly refreshing = new Set<string>();
+    private readonly slim: boolean;
 
     constructor(
         backend: CatalogueBackend | null,
-        now: () => number = () => Date.now()
+        now: () => number = () => Date.now(),
+        slim = true
     ) {
         this.backend = backend;
         this.now = now;
+        this.slim = slim;
     }
 
     get enabled(): boolean {
@@ -177,7 +230,9 @@ export class CatalogueStore {
         try {
             await this.backend.put(key, {
                 savedAt: this.now(),
-                items: items as unknown[],
+                items: this.slim
+                    ? items.map((item) => slimCatalogueItem(item))
+                    : (items as unknown[]),
             });
         } catch {
             // Full or unavailable storage: the catalogue is simply not kept.
@@ -240,5 +295,9 @@ export function createCatalogueStore(doc: Document | null): CatalogueStore {
     if (!doc || !factory || !isCatalogueCacheEnabled(doc)) {
         return new CatalogueStore(null);
     }
-    return new CatalogueStore(new IndexedDbCatalogueBackend(factory));
+    return new CatalogueStore(
+        new IndexedDbCatalogueBackend(factory),
+        () => Date.now(),
+        isSlimSavingEnabled(doc)
+    );
 }
