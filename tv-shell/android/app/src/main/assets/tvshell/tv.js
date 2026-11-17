@@ -1724,6 +1724,44 @@
         }, 250);
     }
 
+    /**
+     * "Something went wrong" tells a viewer nothing. The app logs the real reason with
+     * console.error: the last few are kept and shown small under that screen, so a failure on a
+     * device can be reported without a debugger. Kill switch: localStorage['error-detail'] = 'off'.
+     */
+    (function errorDetail() {
+        try { if (localStorage.getItem('error-detail') === 'off') return; } catch (e) { /* default on */ }
+        var recent = [];
+        var original = console.error;
+        function describe(arg) {
+            if (arg && arg.message) return (arg.name || 'Error') + ': ' + arg.message + (arg.code ? ' [' + arg.code + ']' : '');
+            if (typeof arg === 'object') { try { return JSON.stringify(arg).slice(0, 200); } catch (e) { return String(arg); } }
+            return String(arg);
+        }
+        console.error = function () {
+            try {
+                recent.push([].map.call(arguments, describe).join(' ').slice(0, 300));
+                if (recent.length > 4) recent.shift();
+            } catch (e) { /* ignore */ }
+            return original.apply(console, arguments);
+        };
+        window.addEventListener('unhandledrejection', function (e) { recent.push('Unhandled: ' + describe(e.reason).slice(0, 280)); if (recent.length > 4) recent.shift(); });
+        setInterval(function () {
+            var view = document.querySelector('app-playlist-error-view');
+            var shown = document.getElementById('tvshell-error-detail');
+            if (!view || !recent.length) { if (shown) shown.remove(); return; }
+            var text = recent.join('\n');
+            if (shown && shown.textContent === text) return;
+            if (!shown) {
+                shown = document.createElement('pre');
+                shown.id = 'tvshell-error-detail';
+                shown.style.cssText = 'margin:12px auto 0;max-width:640px;white-space:pre-wrap;word-break:break-word;font:12px/1.4 monospace;opacity:.75;text-align:left;user-select:text';
+                view.appendChild(shown);
+            }
+            shown.textContent = text;
+        }, 1000);
+    })();
+
     window.__tvShell = api;
     if (document.body) init();
     else document.addEventListener('DOMContentLoaded', init);
