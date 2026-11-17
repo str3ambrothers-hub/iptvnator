@@ -116,7 +116,10 @@
         // (Scoped to its host: the detail page's hero uses the same class names.)
         'html.tv-shell lib-dashboard-hero .hero__dot-fill::before{animation-timing-function:steps(1,end)!important}' +
         'html.tv-shell lib-dashboard-hero .hero__content{animation:none!important}' +
-        'html.tv-shell lib-dashboard-hero .hero__backdrop,html.tv-shell lib-dashboard-hero .hero__backdrop-image{transition:none!important}';
+        'html.tv-shell lib-dashboard-hero .hero__backdrop,html.tv-shell lib-dashboard-hero .hero__backdrop-image{transition:none!important}' +
+        // Blurred glass panels re-blur everything behind them on every frame they change.
+        'html.tv-shell *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}' +
+        'html.tv-shell *{text-shadow:none!important}';
 
     /** Kill switch for the motion rules: localStorage['tvshell.fullMotion'] = '1', then reload.
      *  Added in October 2026; remove it two releases later if nobody needs it. */
@@ -1016,8 +1019,77 @@
         return false;
     };
 
+
+    // ---------------------------------------------------------------- diagnostics
+    /** Menu pressed three times quickly shows frame rate, memory and page size; OK toggles native live TV. */
+    var diag = { el: null, raf: 0, frames: 0, since: 0, fps: 0, worst: 0, lastFrame: 0, timer: 0, presses: [] };
+    function nativeLiveOn() {
+        try { return localStorage.getItem('native-live') === 'on'; } catch (err) { return false; }
+    }
+    function diagText() {
+        var mem = window.performance && performance.memory;
+        var heap = mem ? Math.round(mem.usedJSHeapSize / 1048576) + ' MB' : 'n/a';
+        return 'FPS ' + diag.fps + '   worst frame ' + Math.round(diag.worst) + ' ms\n' +
+            'JS heap ' + heap + '   DOM nodes ' + document.getElementsByTagName('*').length + '\n' +
+            'Native live TV: ' + (nativeLiveOn() ? 'ON' : 'off') + '  (OK toggles, Menu x3 closes)';
+    }
+    function diagFrame(now) {
+        if (!diag.el) return;
+        if (diag.lastFrame) diag.worst = Math.max(diag.worst, now - diag.lastFrame);
+        diag.lastFrame = now;
+        diag.frames++;
+        if (now - diag.since >= 1000) {
+            diag.fps = Math.round(diag.frames * 1000 / (now - diag.since));
+            diag.frames = 0;
+            diag.since = now;
+            diag.el.textContent = diagText();
+            // The worst frame is over the last few seconds, not forever.
+            if (++diag.ticks % 5 === 0) diag.worst = 0;
+        }
+        diag.raf = requestAnimationFrame(diagFrame);
+    }
+    function diagKey(event) {
+        if (!diag.el || event.key !== 'Enter') return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        try { localStorage.setItem('native-live', nativeLiveOn() ? 'off' : 'on'); } catch (err) { /* ignore */ }
+        diag.el.textContent = diagText();
+    }
+    function toggleDiag() {
+        if (diag.el) {
+            cancelAnimationFrame(diag.raf);
+            document.removeEventListener('keydown', diagKey, true);
+            diag.el.remove();
+            diag.el = null;
+            return;
+        }
+        diag.el = document.createElement('pre');
+        diag.el.setAttribute('data-tvshell-diag', '');
+        diag.el.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;margin:0;padding:10px 14px;' +
+            'background:rgba(0,0,0,.8);color:#9f9;font:14px/1.4 monospace;pointer-events:none;border-radius:6px';
+        diag.frames = 0; diag.since = 0; diag.worst = 0; diag.lastFrame = 0; diag.ticks = 0;
+        diag.el.textContent = diagText();
+        document.body.appendChild(diag.el);
+        document.addEventListener('keydown', diagKey, true);
+        diag.raf = requestAnimationFrame(function (now) { diag.since = now; diagFrame(now); });
+    }
+    function diagPress() {
+        var now = Date.now();
+        diag.presses = diag.presses.filter(function (t) { return now - t < 1500; });
+        diag.presses.push(now);
+        if (diag.presses.length < 3) return false;
+        diag.presses = [];
+        toggleDiag();
+        return true;
+    }
+    /** The system is short of memory: free what the page can spare. Hook for the native side. */
+    window.__tvTrim = function () {
+        try { document.dispatchEvent(new CustomEvent('tvshell:trim')); } catch (err) { /* ignore */ }
+    };
+
     /** Menu button: open the context menu of the focused element. */
     api.menu = function () {
+        if (diagPress()) return true;
         var active = document.activeElement;
         if (!active || active === document.body) {
             if (!focusFirst()) return false;
@@ -1384,7 +1456,7 @@
                 noteMediaUrl(t.currentSrc || t.getAttribute('src'), null, true);
                 lastMediaTitle = document.title;
                 var startUrl = t.currentSrc || t.getAttribute('src') || api.currentStreamUrl();
-                if (t.tagName === 'VIDEO' && nativeMoviesOn() && isVodUrl(startUrl) && claimNative(startUrl)) {
+                if (t.tagName === 'VIDEO' && (nativeLiveOn() || (nativeMoviesOn() && isVodUrl(startUrl))) && claimNative(startUrl)) {
                     try { t.pause(); } catch (err) { /* ignore */ }
                     native('onSilentPlayback', startUrl, document.title || '');
                 }
@@ -1414,7 +1486,7 @@
             return !/\/live\//.test(path) && !/\.(m3u8?|ts)$/i.test(path);
         }
         function reportPlaybackError(url, title, code) {
-            if (nativeMoviesOn() && isVodUrl(url)) {
+            if (nativeLiveOn() || (nativeMoviesOn() && isVodUrl(url))) {
                 // While the built-in player is on screen the page is in the background: its late
                 // errors must not raise the old "open in another player?" dialog behind it.
                 if (!foreground || !claimNative(url)) return;

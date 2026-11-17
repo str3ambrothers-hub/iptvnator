@@ -57,7 +57,7 @@ describe('ContentCardComponent poster cache', () => {
         fixture.detectChanges();
 
         expect(img().nativeElement.getAttribute('src')).toBe(
-            `/api/image?url=${encodeURIComponent(poster)}&w=360`
+            `/api/image?url=${encodeURIComponent(poster)}&w=240`
         );
     });
 

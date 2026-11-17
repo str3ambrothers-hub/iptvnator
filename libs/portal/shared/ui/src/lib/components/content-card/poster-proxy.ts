@@ -12,8 +12,20 @@
 /** Class the TV shell sets on `<html>`. */
 export const POSTER_PROXY_SHELL_CLASS = 'tv-shell';
 export const POSTER_PROXY_KILL_SWITCH_KEY = 'poster-cache';
-/** Card width in px the cache scales to: sharp on a 1080p TV, small on disk. */
-export const POSTER_PROXY_WIDTH = 360;
+/** Card width in px the cache scales to: small to decode and keep in memory on a Stick. */
+export const POSTER_PROXY_WIDTH = 240;
+/** The earlier, larger size. Kill switch: `localStorage['poster-small'] = 'off'`. */
+export const POSTER_PROXY_LARGE_WIDTH = 360;
+
+function posterWidth(doc: Document): number {
+    try {
+        return doc.defaultView?.localStorage?.getItem('poster-small') === 'off'
+            ? POSTER_PROXY_LARGE_WIDTH
+            : POSTER_PROXY_WIDTH;
+    } catch {
+        return POSTER_PROXY_WIDTH;
+    }
+}
 
 export function isPosterProxyEnabled(doc: Document | null): boolean {
     if (!doc?.documentElement?.classList.contains(POSTER_PROXY_SHELL_CLASS)) {
@@ -50,5 +62,5 @@ export function posterProxyUrl(doc: Document | null, url: string): string {
     if (!doc || !/^https?:\/\//i.test(url) || !isPosterProxyEnabled(doc)) {
         return url;
     }
-    return `${backendBase(doc)}/image?url=${encodeURIComponent(url)}&w=${POSTER_PROXY_WIDTH}`;
+    return `${backendBase(doc)}/image?url=${encodeURIComponent(url)}&w=${posterWidth(doc)}`;
 }

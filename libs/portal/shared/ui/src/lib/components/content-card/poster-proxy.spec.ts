@@ -24,7 +24,7 @@ describe('poster proxy', () => {
         document.documentElement.classList.add(POSTER_PROXY_SHELL_CLASS);
 
         expect(posterProxyUrl(document, poster)).toBe(
-            `/api/image?url=${encodeURIComponent(poster)}&w=360`
+            `/api/image?url=${encodeURIComponent(poster)}&w=240`
         );
     });
 
