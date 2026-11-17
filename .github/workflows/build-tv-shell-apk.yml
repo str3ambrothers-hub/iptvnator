@@ -252,3 +252,24 @@ jobs:
             --title "IPTVnator Android TV ${APK_VERSION} (build ${GITHUB_RUN_NUMBER})" \
             --notes "IPTVnator for Fire TV / Android TV (experimental). Install with the Downloader app (APK link below) or with \`adb install -r\`. Unless the repository provides a release key, the APK is signed with the versioned debug key (tv-shell/android/app/debug.keystore), so newer builds install over older ones. See tv-shell/README.md."
           echo "Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+
+      # One fixed address that always serves the newest build, short enough to type
+      # into the Downloader app on a TV:
+      # https://github.com/<owner>/<repo>/releases/download/tv-shell-latest/iptvnator-tv.apk
+      - name: Refresh the fixed "latest" link
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          APK_NAME: ${{ needs.build.outputs.apk_name }}
+          APK_VERSION: ${{ needs.build.outputs.apk_version }}
+        run: |
+          set -euo pipefail
+          cp "dist/${APK_NAME}" dist/iptvnator-tv.apk
+          gh release delete tv-shell-latest --cleanup-tag --yes 2>/dev/null || true
+          gh release create tv-shell-latest dist/iptvnator-tv.apk \
+            --target "$GITHUB_SHA" \
+            --prerelease --latest=false \
+            --title "Newest Android TV build (${APK_VERSION}, build ${GITHUB_RUN_NUMBER})" \
+            --notes "Always the newest build. Download link: https://github.com/${GITHUB_REPOSITORY}/releases/download/tv-shell-latest/iptvnator-tv.apk"
+          echo "Fixed link: https://github.com/${GITHUB_REPOSITORY}/releases/download/tv-shell-latest/iptvnator-tv.apk"
