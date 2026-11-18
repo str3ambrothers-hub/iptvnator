@@ -31,6 +31,24 @@ import {
 import { createXtreamDetailsRequestGuard } from './xtream-details-request-guard';
 import { stripXtreamSerieInfoPlaceholders } from './xtream-detail-metadata';
 
+/** True when a `get_vod_info` answer carries no description-type data at all. */
+function vodInfoLooksEmpty(details: XtreamVodDetails | null | undefined): boolean {
+    const info = (details as { info?: Record<string, unknown> } | null)?.info;
+    if (!info || typeof info !== 'object') return true;
+    return Object.values(info).every(
+        (value) => !value || (Array.isArray(value) && value.length === 0)
+    );
+}
+
+/** Kill switch: `localStorage['vod-info-retry'] = 'off'`. */
+function vodInfoRetryEnabled(): boolean {
+    try {
+        return globalThis.localStorage?.getItem('vod-info-retry') !== 'off';
+    } catch {
+        return true;
+    }
+}
+
 /** Facade composing the Xtream feature stores and cross-feature workflows. */
 export const XtreamStore = signalStore(
     { providedIn: 'root' },
@@ -152,6 +170,24 @@ export const XtreamStore = signalStore(
                 store.setSelectedItem(null);
                 xtreamApiService
                     .getVodInfo(credentials, params.vodId)
+                    .then(async (first: XtreamVodDetails) => {
+                        // Some providers answer an empty detail now and then (busy, or a
+                        // second connection refused); one more try fixes most of those.
+                        if (!vodInfoLooksEmpty(first) || !vodInfoRetryEnabled()) {
+                            return first;
+                        }
+                        await new Promise((r) => setTimeout(r, 1500));
+                        if (!isCurrentRequest()) return first;
+                        try {
+                            const again = await xtreamApiService.getVodInfo(
+                                credentials,
+                                params.vodId
+                            );
+                            return vodInfoLooksEmpty(again) ? first : again;
+                        } catch {
+                            return first;
+                        }
+                    })
                     .then(async (vodDetails: XtreamVodDetails) => {
                         if (!isCurrentRequest()) return;
 

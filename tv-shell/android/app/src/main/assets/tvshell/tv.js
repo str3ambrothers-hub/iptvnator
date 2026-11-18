@@ -1502,7 +1502,7 @@
                 var buttons = document.querySelectorAll('button,[role="button"]');
                 for (var i = 0; i < buttons.length; i++) {
                     var label = (buttons[i].getAttribute('aria-label') || buttons[i].textContent || '').trim();
-                    if (/^close player$/i.test(label) && buttons[i].isConnected) { buttons[i].click(); return true; }
+                    if (/close player/i.test(label) && buttons[i].isConnected) { buttons[i].click(); return true; }
                 }
             } catch (err) { /* ignore */ }
             return false;
