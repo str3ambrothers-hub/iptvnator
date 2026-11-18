@@ -1856,6 +1856,48 @@
         observer.observe(document.documentElement, { childList: true, subtree: true });
     }
 
+
+    // ------------------------------------------------------- refresh library button
+    /**
+     * A Refresh button beside "+" in the top bar. The TV has no hover and no R key, and the
+     * playlist menu's refresh sits behind a search box that keeps the remote. It drops the saved
+     * library (the next load fetches it again from the provider) and reloads the page.
+     * Kill switch: localStorage['refresh-button'] = 'off'.
+     */
+    function refreshLibrary() {
+        var done = false;
+        function reload() { if (!done) { done = true; location.reload(); } }
+        try {
+            var req = indexedDB.deleteDatabase('iptvnator-catalogue');
+            req.onsuccess = reload;
+            req.onerror = reload;
+            req.onblocked = function () { setTimeout(reload, 400); };
+        } catch (err) { /* reload anyway */ }
+        setTimeout(reload, 2500);
+    }
+    function ensureRefreshButton() {
+        try { if (localStorage.getItem('refresh-button') === 'off') return; } catch (err) { /* default on */ }
+        var bar = document.querySelector('.header-actions--leading');
+        if (!bar || bar.querySelector('[data-tvshell-refresh]')) return;
+        var add = bar.querySelector('button:not(.shortcuts-trigger)');
+        if (!add) return;
+        var btn = add.cloneNode(true);
+        btn.setAttribute('data-tvshell-refresh', '');
+        btn.removeAttribute('mat-icon-button');
+        btn.setAttribute('aria-label', 'Refresh library');
+        btn.setAttribute('title', 'Refresh library');
+        btn.removeAttribute('aria-describedby');
+        var icon = btn.querySelector('mat-icon');
+        if (icon) icon.textContent = 'sync';
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            btn.disabled = true;
+            refreshLibrary();
+        });
+        add.after(btn);
+    }
+
     // ------------------------------------------------------------- init
     function init() {
         document.documentElement.classList.add('tv-shell');
@@ -1866,6 +1908,8 @@
         installClipboardHook();
         installHistoryTracking();
         installFocusMirror();
+        // The top bar is redrawn by Angular now and then: put the button back when it goes missing.
+        setInterval(ensureRefreshButton, 1000);
         document.addEventListener('keydown', onKeyDown, true);
         // Keyups arrive in queue order: a keydown after one is a new press, however late it runs.
         document.addEventListener('keyup', function (e) {

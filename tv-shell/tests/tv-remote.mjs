@@ -734,6 +734,34 @@ console.log('9d. a details screen opens on Play, and chips and "and more" are no
     await p.close();
 }
 
+console.log('9e. a Refresh button sits beside the add button in the top bar');
+{
+    const p = await context.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
+    await p.goto(URL_, { waitUntil: 'networkidle' });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => {
+        document.body.innerHTML = `
+          <div class="header-actions header-actions--leading" style="position:fixed;left:400px;top:20px">
+            <button class="shortcuts-trigger" id="kbd"><mat-icon>keyboard</mat-icon></button>
+            <button id="add" aria-label="Add playlist"><mat-icon>add</mat-icon></button>
+          </div>`;
+    });
+    await p.waitForTimeout(1600);
+    const info = await p.evaluate(() => {
+        const b = document.querySelectorAll('[data-tvshell-refresh]');
+        const add = document.getElementById('add');
+        return { count: b.length, after: add.nextElementSibling === b[0], icon: b[0] && b[0].querySelector('mat-icon').textContent, label: b[0] && b[0].getAttribute('aria-label') };
+    });
+    check(info.count === 1 && info.after && info.icon === 'sync', 'one Refresh button follows the add button: ' + JSON.stringify(info));
+    await p.focus('#add');
+    await p.keyboard.press('ArrowRight');
+    await p.waitForTimeout(250);
+    const reached = await p.evaluate(() => document.activeElement.hasAttribute('data-tvshell-refresh'));
+    check(reached, 'Right from the add button reaches Refresh');
+    await p.close();
+}
+
 console.log('10. D-pad robustness: queued repeats, snack bars, animated rails');
 {
     const r = await page.evaluate(() => {

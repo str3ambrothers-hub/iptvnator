@@ -66,7 +66,7 @@ describe('ContentCardComponent poster cache', () => {
         try {
             document.documentElement.classList.add(POSTER_PROXY_SHELL_CLASS);
             fixture.detectChanges();
-            const cached = `/api/image?url=${encodeURIComponent(poster)}&w=360`;
+            const cached = `/api/image?url=${encodeURIComponent(poster)}&w=240`;
 
             img().triggerEventHandler('error');
             jest.advanceTimersByTime(1500);
