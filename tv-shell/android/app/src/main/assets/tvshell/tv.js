@@ -274,6 +274,10 @@
     }
 
     // Android FocusFinder (frameworks/base/core/java/android/view/FocusFinder.java)
+    function killSwitchOff(name) {
+        try { return localStorage.getItem(name) === 'off'; } catch (err) { return false; }
+    }
+
     function isCandidate(src, dest, dir) {
         var cx = (src.left + src.right) / 2;
         var cy = (src.top + src.bottom) / 2;
@@ -608,6 +612,16 @@
                 !beamsOverlap(dir, src, next.el.getBoundingClientRect())) {
                 var inMain = findNext(dir, src, mainArea, exclude);
                 if (inMain) next = inMain;
+            }
+        }
+        // Up/Down inside the left rail stays in the rail: the rail's next icon (Settings below
+        // Advanced search) wins over a category or a movie that is merely nearer on screen.
+        // Kill switch: localStorage['rail-vertical'] = 'off'.
+        if ((dir === 'up' || dir === 'down') && exclude && exclude.closest && scope === document && !killSwitchOff('rail-vertical')) {
+            var railBox = exclude.closest('.app-rail');
+            if (railBox && (!next || !railBox.contains(next.el))) {
+                var inRail = findNext(dir, src, railBox, exclude);
+                if (inRail) next = inRail;
             }
         }
         // Channel list beside a preview player: keep the row's own actions reachable. When

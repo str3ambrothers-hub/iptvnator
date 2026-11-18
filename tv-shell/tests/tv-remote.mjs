@@ -249,6 +249,17 @@ await page.waitForTimeout(500);
 st = await state();
 check(st.scope === 'document', 'Back closed the context menu (' + st.active + ')');
 
+console.log('5b. Down from Advanced search in the rail reaches Settings');
+{
+    const searchIcon = await reach(/Advanced search/i, ['ArrowLeft', 'ArrowDown', 'ArrowUp']);
+    if (searchIcon) {
+        const after = await key('ArrowDown');
+        check(/Open settings/i.test(after || ''), 'Down from Advanced search lands on Settings: ' + after);
+    } else {
+        console.log('  (no Advanced search icon on this screen; skipped)');
+    }
+}
+
 console.log('6. Settings page reachable; movies/series rails');
 f = await reach(/\[Open settings\]/i, ['ArrowLeft', 'ArrowDown']);
 check(!!f, 'settings focused: ' + f);

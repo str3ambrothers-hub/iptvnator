@@ -81,13 +81,12 @@ export class SettingsService {
     }
 
     private resolveSystemTheme(deviceIsDark: boolean): Theme {
-        return deviceIsDark || this.tvShellPrefersDark()
-            ? this.systemThemes.dark
-            : this.systemThemes.light;
+        if (this.tvShellPrefersDark()) return Theme.NightOwlTheme;
+        return deviceIsDark ? this.systemThemes.dark : this.systemThemes.light;
     }
 
     /**
-     * TV screens are dark by default: Fire TV's WebView reports a light device
+     * TV screens use Night Owl by default: Fire TV's WebView reports a light device
      * while the emulator reports dark. Kill switch:
      * `localStorage['tv-dark-default'] = 'off'`.
      */
