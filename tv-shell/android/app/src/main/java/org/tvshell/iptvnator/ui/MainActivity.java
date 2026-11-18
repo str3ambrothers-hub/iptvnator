@@ -625,11 +625,21 @@ public class MainActivity extends Activity {
      * The page's video plays without sound (an audio format the browser player cannot decode):
      * go straight to the built-in player, or the player the user picked in Settings, with no dialog.
      */
+    /** The built-in player is on top: the hidden page's timers are frozen until we are back. */
+    private boolean pauseWebForPlayer;
+
+    @Override
+    protected void onStop() {
+        if (pauseWebForPlayer && webView != null) webView.pauseTimers();
+        super.onStop();
+    }
+
     void offerForSilence(final String url, final String title) {
         if (url == null || url.isEmpty() || webView == null || isFinishing()) return;
         if (externalDialog != null && externalDialog.isShowing()) return;
         String preferred = prefs.externalPlayerPackage();
         if (preferred == null || preferred.isEmpty() || ExternalPlayer.CHOOSER.equals(preferred)) {
+            pauseWebForPlayer = true;
             startActivity(NativePlayerActivity.intent(this, url, title));
         } else {
             openExternal(url, title);
@@ -715,6 +725,8 @@ public class MainActivity extends Activity {
             return;
         }
         webView.onResume();
+        webView.resumeTimers();
+        pauseWebForPlayer = false;
         js("window.__tvNativeClosed && window.__tvNativeClosed()");
         js("window.__tvShell && typeof window.__tvShell.setForeground === 'function' && window.__tvShell.setForeground(true)");
         if (errorPanel.getVisibility() != View.VISIBLE) webView.requestFocus(View.FOCUS_DOWN);
