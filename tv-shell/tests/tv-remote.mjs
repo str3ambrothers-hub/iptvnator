@@ -839,6 +839,34 @@ console.log('9h. a details screen hides the category list');
     await p.close();
 }
 
+console.log('9i. Back from a details screen returns to the card that opened it');
+{
+    const p = await context.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
+    await p.goto(URL_, { waitUntil: 'networkidle' });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => {
+        window.__cards = () => '<button id="c1">Movie One</button><button id="c2">Movie Two</button><button id="c3">Movie Three</button>';
+        document.body.innerHTML = `
+          <nav style="position:fixed;left:0;top:0"><a href="#dash" id="dash">Dashboard</a></nav>
+          <main id="content" style="position:fixed;left:200px;top:100px">${window.__cards()}</main>`;
+        document.getElementById('c2').focus();
+    });
+    await p.evaluate(() => {
+        history.pushState({}, '', '#detail');
+        document.getElementById('content').innerHTML = '<app-portal-detail-shell><button class="play-btn" id="play">Play</button></app-portal-detail-shell>';
+    });
+    await p.waitForTimeout(800);
+    await p.evaluate(() => {
+        history.back();
+        setTimeout(() => { document.getElementById('content').innerHTML = window.__cards(); }, 500);
+    });
+    await p.waitForTimeout(2200);
+    const id = await p.evaluate(() => document.activeElement.id);
+    check(id === 'c2', 'focus returns to the card that was opened: ' + id);
+    await p.close();
+}
+
 console.log('10. D-pad robustness: queued repeats, snack bars, animated rails');
 {
     const r = await page.evaluate(() => {

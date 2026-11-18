@@ -808,7 +808,7 @@
     function onKeyDown(event) {
         if (event.defaultPrevented && !event.__tvshell) return;
         var dir = DIR[event.key];
-        if (dir) lastArrowAt = Date.now();
+        if (dir) lastDpadAt = Date.now();
         var active = document.activeElement;
         // Release before the browser performs the hardware keyboard's default editing action.
         if (active && active.hasAttribute(KEYBOARD_HELD) && isHardwareEdit(event)) {
@@ -1812,6 +1812,7 @@
         var pushState = history.pushState;
         history.pushState = function () {
             navDepth += 1;
+            rememberReturnFocus();
             var result = pushState.apply(this, arguments);
             scheduleRefocus();
             watchForPlay();
@@ -1829,7 +1830,7 @@
      * change, until the D-pad is used, focus moves to the Play button as soon as it appears.
      * Kill switch: localStorage['focus-play'] = 'off'.
      */
-    var lastArrowAt = 0;
+    var lastDpadAt = 0;
     var playWatch = null;
     function watchForPlay() {
         try { if (localStorage.getItem('focus-play') === 'off') return; } catch (err) { /* default on */ }
@@ -1837,7 +1838,7 @@
         var ticks = 0;
         if (playWatch) clearInterval(playWatch);
         playWatch = setInterval(function () {
-            if (++ticks > 40 || lastArrowAt > stamp) { clearInterval(playWatch); playWatch = null; return; }
+            if (++ticks > 40 || lastDpadAt > stamp) { clearInterval(playWatch); playWatch = null; return; }
             var buttons = document.querySelectorAll('.play-btn:not(.play-btn--secondary)');
             for (var i = 0; i < buttons.length; i++) {
                 var el = buttons[i];
@@ -1855,6 +1856,7 @@
         if (refocusTimer) clearTimeout(refocusTimer);
         refocusTimer = setTimeout(function () {
             refocusTimer = null;
+            if (returnTarget && Date.now() - returnTarget.at < 15000) return; // Back is about to restore it
             var active = document.activeElement;
             if (!active || active === document.body || !active.isConnected || !isVisible(active)) {
                 var scope = navigationScope();
@@ -1967,7 +1969,52 @@
         var on = !!document.querySelector('app-portal-detail-shell');
         try { if (localStorage.getItem('detail-fullscreen') === 'off') on = false; } catch (err) { /* default on */ }
         var root = document.documentElement;
-        if (on !== root.classList.contains('tv-detail')) root.classList.toggle('tv-detail', on);
+        if (on !== root.classList.contains('tv-detail')) {
+            root.classList.toggle('tv-detail', on);
+            if (!on) restoreReturnFocus();
+        }
+    }
+
+    /**
+     * The card that had focus when a details screen opened, so Back lands on it again instead of at
+     * the top left. Matched by its text (the list is redrawn when it comes back).
+     * Kill switch: localStorage['return-focus'] = 'off'.
+     */
+    var returnTarget = null;
+    function focusKey(el) {
+        var text = (el.getAttribute('aria-label') || el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        return text ? el.tagName + '|' + text : '';
+    }
+    function rememberReturnFocus() {
+        try { if (localStorage.getItem('return-focus') === 'off') return; } catch (err) { /* default on */ }
+        if (document.querySelector('app-portal-detail-shell')) return; // already on a details screen
+        var active = document.activeElement;
+        if (!active || active === document.body || !active.closest('main,[role="main"]')) return;
+        var key = focusKey(active);
+        if (key) returnTarget = { key: key, at: Date.now() };
+    }
+    function restoreReturnFocus() {
+        var target = returnTarget;
+        if (!target) return;
+        var stamp = Date.now();
+        var ticks = 0;
+        var timer = setInterval(function () {
+            if (++ticks > 25 || lastDpadAt > stamp || document.querySelector('app-portal-detail-shell')) {
+                clearInterval(timer);
+                returnTarget = null;
+                if (ticks > 25 && (!document.activeElement || document.activeElement === document.body)) focusFirst();
+                return;
+            }
+            var list = candidates(document, null);
+            for (var i = 0; i < list.length; i++) {
+                if (list[i].el.closest('main,[role="main"]') && focusKey(list[i].el) === target.key) {
+                    setFocus(list[i].el, { silent: true });
+                    clearInterval(timer);
+                    returnTarget = null;
+                    return;
+                }
+            }
+        }, 200);
     }
 
     // ------------------------------------------------------------- init
@@ -1982,7 +2029,9 @@
         installFocusMirror();
         // The top bar is redrawn by Angular now and then: put the button back when it goes missing.
         setInterval(function () { ensureRefreshButton(); ensurePageBack(); }, 1000);
-        setInterval(syncDetailMode, 250);
+        setInterval(syncDetailMode, 1000);
+        // In the same frame as the change, so the category list never flashes in or out.
+        new MutationObserver(syncDetailMode).observe(document.documentElement, { childList: true, subtree: true });
         document.addEventListener('keydown', onKeyDown, true);
         // Keyups arrive in queue order: a keydown after one is a new press, however late it runs.
         document.addEventListener('keyup', function (e) {
