@@ -236,8 +236,18 @@
         return base;
     }
 
+    /**
+     * Controls that are not worth a D-pad stop: year, genre, country and age chips (they only open a
+     * search), the "and more" link (the cast row is right below), and a rail's scroll arrows (moving
+     * along the rail scrolls it). Kill switch: localStorage['tv-trim-focus'] = 'off'.
+     */
+    var FOCUS_NOISE = '.meta-chip__facet,.credits__more,.rail__arrow';
+    var trimFocus = true;
+    try { trimFocus = localStorage.getItem('tv-trim-focus') !== 'off'; } catch (err) { /* default on */ }
+
     /** The checks that cost: the disabled state, the ancestor walk, the style, the container test. */
     function qualifies(el) {
+        if (trimFocus && el.matches(FOCUS_NOISE)) return false;
         if (isDisabled(el) || !isShown(el) || !ensureFocusable(el)) return false;
         // Landing zones (dialog container, scroll owners, detail shells)
         // are never navigation targets: their children are.
@@ -653,6 +663,15 @@
         if (!list.length) return false;
         // Prefer whatever is closest to where focus last was, else top-left.
         var origin = lastRect || { left: 0, top: 0, right: 0, bottom: 0 };
+        // A details screen opens on its Play button, not on whatever is nearest to the old position.
+        if (scope === document) {
+            for (var p = 0; p < list.length; p++) {
+                if (list[p].el.classList.contains('play-btn') && !list[p].el.classList.contains('play-btn--secondary')) {
+                    setFocus(list[p].el, { silent: true });
+                    return true;
+                }
+            }
+        }
         var best = null, bestScore = Infinity;
         for (var i = 0; i < list.length; i++) {
             var r = list[i].rect;

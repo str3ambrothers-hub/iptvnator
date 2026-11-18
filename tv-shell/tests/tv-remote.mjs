@@ -700,6 +700,40 @@ console.log('9c. remote reaches an error screen\'s buttons and a list row\'s men
     await p.close();
 }
 
+console.log('9d. a details screen opens on Play, and chips and "and more" are not stops');
+{
+    const p = await context.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
+    await p.goto(URL_, { waitUntil: 'networkidle' });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => {
+        (document.activeElement || document.body).blur();
+        document.body.innerHTML = `
+          <nav style="position:fixed;left:0;top:0"><a href="#dash" id="dash">Dashboard</a></nav>
+          <main style="position:fixed;left:300px;top:200px">
+            <span class="meta-chip"><button class="meta-chip__facet" id="year">2026</button></span><br>
+            <button class="play-btn" id="play">Play</button>
+            <button class="play-btn play-btn--secondary" id="trailer">Trailer</button><br>
+            <span>Starring A</span><button class="credits__more" id="more">and more</button><br>
+            <button id="fav">Favourite</button>
+          </main>`;
+    });
+    await p.evaluate(() => window.__tvShell.back()); // nothing to close: falls back to placing focus
+    await p.waitForTimeout(600);
+    const start = await p.evaluate(() => document.activeElement.id);
+    check(start === 'play', 'focus lands on Play, not the nearest rail button: ' + start);
+    await p.keyboard.press('ArrowUp');
+    await p.waitForTimeout(250);
+    const up = await p.evaluate(() => document.activeElement.id);
+    check(up !== 'year', 'the year chip is not a stop: ' + up);
+    await p.focus('#fav');
+    await p.keyboard.press('ArrowUp');
+    await p.waitForTimeout(250);
+    const upMore = await p.evaluate(() => document.activeElement.id);
+    check(upMore !== 'more', 'the "and more" link is not a stop: ' + upMore);
+    await p.close();
+}
+
 console.log('10. D-pad robustness: queued repeats, snack bars, animated rails');
 {
     const r = await page.evaluate(() => {
