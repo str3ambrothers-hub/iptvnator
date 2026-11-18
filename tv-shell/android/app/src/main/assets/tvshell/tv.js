@@ -1927,6 +1927,36 @@
         add.after(btn);
     }
 
+
+    // ------------------------------------------------------- in-page Back button
+    /**
+     * A "Back" button on a details screen itself, top left above the poster, where it is easy to
+     * find; the top bar's arrow is small and far away. It presses that same top-bar Back.
+     * Kill switch: localStorage['page-back'] = 'off'.
+     */
+    function ensurePageBack() {
+        try { if (localStorage.getItem('page-back') === 'off') return; } catch (err) { /* default on */ }
+        var inner = document.querySelector('app-portal-detail-shell .shell__hero-inner');
+        var existing = document.querySelector('[data-tvshell-page-back]');
+        if (!inner) { if (existing) existing.remove(); return; }
+        if (existing && inner.contains(existing)) return;
+        if (existing) existing.remove();
+        if (getComputedStyle(inner).position === 'static') inner.style.position = 'relative';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.setAttribute('data-tvshell-page-back', '');
+        btn.setAttribute('aria-label', 'Back');
+        btn.textContent = '←  Back';
+        btn.style.cssText = 'position:absolute;top:14px;left:24px;z-index:6;padding:10px 20px;border:0;border-radius:10px;' +
+            'background:rgba(0,0,0,.55);color:#fff;font:600 16px sans-serif;cursor:pointer';
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            var top = document.querySelector('[data-test-id="workspace-header-back"]');
+            if (top) top.click(); else history.back();
+        });
+        inner.insertBefore(btn, inner.firstChild);
+    }
+
     // ------------------------------------------------------------- init
     function init() {
         document.documentElement.classList.add('tv-shell');
@@ -1938,7 +1968,7 @@
         installHistoryTracking();
         installFocusMirror();
         // The top bar is redrawn by Angular now and then: put the button back when it goes missing.
-        setInterval(ensureRefreshButton, 1000);
+        setInterval(function () { ensureRefreshButton(); ensurePageBack(); }, 1000);
         document.addEventListener('keydown', onKeyDown, true);
         // Keyups arrive in queue order: a keydown after one is a new press, however late it runs.
         document.addEventListener('keyup', function (e) {

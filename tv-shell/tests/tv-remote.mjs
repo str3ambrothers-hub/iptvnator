@@ -787,6 +787,33 @@ console.log('9f. focus moves to Play when it appears after a page change');
     await p.close();
 }
 
+console.log('9g. a Back button on the details screen presses the top bar Back');
+{
+    const p = await context.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
+    await p.goto(URL_, { waitUntil: 'networkidle' });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => {
+        window.__topBack = 0;
+        document.body.innerHTML = `
+          <button data-test-id="workspace-header-back" id="top">Top back</button>
+          <app-portal-detail-shell style="display:block;position:fixed;left:200px;top:100px;width:600px;height:300px">
+            <div class="shell__hero"><div class="shell__hero-inner"><button class="play-btn" id="play">Play</button></div></div>
+          </app-portal-detail-shell>`;
+        document.getElementById('top').addEventListener('click', () => { window.__topBack++; });
+    });
+    await p.waitForTimeout(1600);
+    const found = await p.evaluate(() => document.querySelectorAll('[data-tvshell-page-back]').length);
+    check(found === 1, 'one in-page Back button appears: ' + found);
+    await p.click('[data-tvshell-page-back]');
+    const presses = await p.evaluate(() => window.__topBack);
+    check(presses === 1, 'it presses the top bar Back: ' + presses);
+    await p.evaluate(() => document.querySelector('app-portal-detail-shell').remove());
+    await p.waitForTimeout(1600);
+    check(await p.evaluate(() => document.querySelectorAll('[data-tvshell-page-back]').length) === 0, 'it goes away with the details screen');
+    await p.close();
+}
+
 console.log('10. D-pad robustness: queued repeats, snack bars, animated rails');
 {
     const r = await page.evaluate(() => {
