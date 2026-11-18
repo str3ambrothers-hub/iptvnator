@@ -1456,9 +1456,7 @@
                 lastMediaTitle = document.title;
                 var startUrl = t.currentSrc || t.getAttribute('src') || api.currentStreamUrl();
                 if (t.tagName === 'VIDEO' && (nativeLiveOn() || (nativeMoviesOn() && isVodUrl(startUrl))) && claimNative(startUrl)) {
-                    try { t.pause(); } catch (err) { /* ignore */ }
-                    native('onSilentPlayback', startUrl, document.title || '');
-                    releasePageStream(t);
+                    handOff(t, startUrl);
                 }
             }
         }, true);
@@ -1471,6 +1469,52 @@
             try { if (localStorage.getItem('free-page-stream') === 'off') return; } catch (err) { /* default on */ }
             try { v.pause(); v.removeAttribute('src'); v.load(); } catch (err) { /* ignore */ }
         }
+
+        /**
+         * A black cover over the page from the moment a movie or episode is handed to the built-in
+         * player until it closes, so the page's own player is never seen. Removed when the shell
+         * comes back to the foreground, or after a few seconds if the player never opened.
+         */
+        var cover = null, coverTimer = 0, coverVideo = null;
+        function showCover(v) {
+            coverVideo = v || null;
+            if (!cover) {
+                cover = document.createElement('div');
+                cover.setAttribute('data-tvshell-cover', '');
+                cover.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#000;color:#9aa;' +
+                    'display:flex;align-items:center;justify-content:center;font:20px sans-serif';
+                cover.textContent = 'Opening player…';
+                document.body.appendChild(cover);
+            }
+            clearTimeout(coverTimer);
+            coverTimer = setTimeout(hideCover, 8000);
+        }
+        function hideCover() {
+            clearTimeout(coverTimer);
+            if (cover) { cover.remove(); cover = null; }
+        }
+        /** The built-in player closed: drop the cover and leave the page's now-empty player. */
+        window.__tvNativeClosed = function () {
+            if (!cover) return;
+            var v = coverVideo;
+            coverVideo = null;
+            hideCover();
+            try { if (v && v.isConnected && api.back) api.back(); } catch (err) { /* ignore */ }
+        };
+        function handOff(v, url) {
+            showCover(v);
+            try { v.pause(); } catch (err) { /* ignore */ }
+            native('onSilentPlayback', url, document.title || '');
+            releasePageStream(v);
+        }
+        /** Movie and episode streams hand over as soon as the page names them, before any picture shows. */
+        document.addEventListener('loadstart', function (e) {
+            var v = e.target;
+            if (!v || v.tagName !== 'VIDEO' || !foreground || !nativeMoviesOn()) return;
+            var url = v.currentSrc || v.getAttribute('src');
+            if (!url || !/\/(movie|series)\//.test(url) || !isVodUrl(url) || !claimNative(url)) return;
+            handOff(v, url);
+        }, true);
         var silenceChecked = {};
         /** True once per URL per 8 s, so one tap opens the player once but a later tap opens it again. */
         function claimNative(url) {
@@ -1499,6 +1543,7 @@
                 // While the built-in player is on screen the page is in the background: its late
                 // errors must not raise the old "open in another player?" dialog behind it.
                 if (!foreground || !claimNative(url)) return;
+                showCover(currentVideo);
                 native('onSilentPlayback', url, title || '');
                 return;
             }
@@ -1549,9 +1594,7 @@
             if (!isFinite(v.duration) || v.duration < 120) return;
             var url = api.currentStreamUrl();
             if (!url || !claimNative(url)) return;
-            try { v.pause(); } catch (err) { /* ignore */ }
-            native('onSilentPlayback', url, document.title || '');
-            releasePageStream(v);
+            handOff(v, url);
         }, true);
         function watchForSilence(v) {
             try { if (localStorage.getItem('silent-check') === 'off') return; } catch (e) { /* default on */ }

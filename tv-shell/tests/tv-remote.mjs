@@ -655,6 +655,12 @@ console.log('9b. under the Android bridge: movies and episodes go straight to th
     check(r.episode.join(',').startsWith('onSilentPlayback') && !r.episode.join(',').includes('onPlaybackError'),
         'a format error on an episode opens the built-in player, not the prompt: ' + r.episode.join(','));
     check(r.live.join(',') === 'onPlaybackError', 'live TV keeps the prompt: ' + r.live.join(','));
+    const cover = await movie.evaluate(() => {
+        const had = !!document.querySelector('[data-tvshell-cover]');
+        window.__tvNativeClosed();
+        return [had, !!document.querySelector('[data-tvshell-cover]')];
+    });
+    check(cover[0] === true && cover[1] === false, 'a handed-off movie hides the page player under a cover until the built-in player closes: ' + cover.join(','));
     await movie.close();
 }
 console.log('9c. remote reaches an error screen\'s buttons and a list row\'s menu');

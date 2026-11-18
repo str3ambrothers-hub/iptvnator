@@ -63,7 +63,31 @@ public class NativePlayerActivity extends android.app.Activity {
         view = new PlayerView(this);
         view.setKeepScreenOn(true);
         view.setControllerShowTimeoutMs(4000);
-        setContentView(view);
+        android.widget.FrameLayout root = new android.widget.FrameLayout(this);
+        root.setBackgroundColor(android.graphics.Color.BLACK);
+        root.addView(view, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        // A visible way out, shown together with the playback controls (touch, mouse or remote).
+        final android.widget.Button back = new android.widget.Button(this);
+        back.setText("\u2190  Back");
+        back.setAllCaps(false);
+        back.setTextColor(android.graphics.Color.WHITE);
+        back.setTextSize(18);
+        back.setBackgroundColor(0xB3000000);
+        back.setFocusable(true);
+        back.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { finish(); }
+        });
+        float density = getResources().getDisplayMetrics().density;
+        android.widget.FrameLayout.LayoutParams backParams = new android.widget.FrameLayout.LayoutParams(-2, -2,
+            android.view.Gravity.TOP | android.view.Gravity.START);
+        backParams.setMargins((int) (24 * density), (int) (24 * density), 0, 0);
+        root.addView(back, backParams);
+        view.setControllerVisibilityListener(new PlayerView.ControllerVisibilityListener() {
+            @Override public void onVisibilityChanged(int visibility) {
+                back.setVisibility(visibility == View.VISIBLE ? View.VISIBLE : View.GONE);
+            }
+        });
+        setContentView(root);
         view.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
             | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
 
