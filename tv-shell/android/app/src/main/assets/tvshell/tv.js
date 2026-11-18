@@ -1974,7 +1974,7 @@
             if (!shown) {
                 shown = document.createElement('pre');
                 shown.id = 'tvshell-error-detail';
-                shown.style.cssText = 'margin:12px auto 0;max-width:640px;white-space:pre-wrap;word-break:break-word;font:12px/1.4 monospace;opacity:.75;text-align:left;user-select:text';
+                shown.style.cssText = 'position:fixed;left:16px;bottom:12px;z-index:5;pointer-events:none;max-width:560px;white-space:pre-wrap;word-break:break-word;font:12px/1.4 monospace;opacity:.75;text-align:left;user-select:text';
                 view.appendChild(shown);
             }
             shown.textContent = text;

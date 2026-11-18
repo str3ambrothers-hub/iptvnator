@@ -142,16 +142,11 @@ export class XtreamApiService {
             series: XtreamCodeActions.GetSeriesCategories,
         };
 
-        const response = await this.sendRequest(
+        return this.catalogArray<XtreamCategory>(
             credentials,
             { action: actionMap[type] },
             options
         );
-
-        if (!Array.isArray(response)) {
-            throw new Error('The source did not return a valid catalog.');
-        }
-        return response;
     }
 
     /**
@@ -161,16 +156,11 @@ export class XtreamApiService {
         credentials: XtreamCredentials,
         options?: XtreamRequestOptions
     ): Promise<XtreamLiveStream[]> {
-        const response = await this.sendRequest(
+        return this.catalogArray<XtreamLiveStream>(
             credentials,
             { action: XtreamCodeActions.GetLiveStreams },
             options
         );
-
-        if (!Array.isArray(response)) {
-            throw new Error('The source did not return a valid catalog.');
-        }
-        return response;
     }
 
     /**
@@ -180,7 +170,7 @@ export class XtreamApiService {
         credentials: XtreamCredentials,
         options?: XtreamVodCatalogRequestOptions
     ): Promise<XtreamVodStream[]> {
-        const response = await this.sendRequest(
+        return this.catalogArray<XtreamVodStream>(
             credentials,
             {
                 action: XtreamCodeActions.GetVodStreams,
@@ -190,11 +180,6 @@ export class XtreamApiService {
             },
             options
         );
-
-        if (!Array.isArray(response)) {
-            throw new Error('The source did not return a valid catalog.');
-        }
-        return response;
     }
 
     async getVodStream(
@@ -222,16 +207,11 @@ export class XtreamApiService {
         credentials: XtreamCredentials,
         options?: XtreamRequestOptions
     ): Promise<XtreamSerieItem[]> {
-        const response = await this.sendRequest(
+        return this.catalogArray<XtreamSerieItem>(
             credentials,
             { action: XtreamCodeActions.GetSeries },
             options
         );
-
-        if (!Array.isArray(response)) {
-            throw new Error('The source did not return a valid catalog.');
-        }
-        return response;
     }
 
     /**
@@ -360,6 +340,61 @@ export class XtreamApiService {
     /**
      * Send request via IPC to avoid CORS issues
      */
+    /**
+     * A catalogue request. Providers that are busy (or limit connections) now and then answer
+     * with something that is not a list, or time out; on the TV app the big requests all start
+     * together after a launch or refresh, so that happens. Tried up to three times, a moment
+     * apart, before giving up. Kill switch: localStorage['catalog-retry'] = 'off'.
+     */
+    private async catalogArray<T>(
+        credentials: XtreamCredentials,
+        params: Record<string, string | number>,
+        options?: XtreamRequestOptions
+    ): Promise<T[]> {
+        const attempts = this.catalogRetryEnabled() ? 3 : 1;
+        let lastError: unknown;
+        for (let attempt = 0; attempt < attempts; attempt++) {
+            try {
+                const response = await this.sendRequest<unknown>(
+                    credentials,
+                    params,
+                    options
+                );
+                if (Array.isArray(response)) {
+                    return response as T[];
+                }
+                lastError = new Error(
+                    'The source did not return a valid catalog.'
+                );
+            } catch (error) {
+                if (options?.signal?.aborted) {
+                    throw error;
+                }
+                lastError = error;
+            }
+            if (attempt < attempts - 1) {
+                await new Promise((resolve) =>
+                    setTimeout(resolve, 1500 * (attempt + 1))
+                );
+                options?.signal?.throwIfAborted();
+            }
+        }
+        throw lastError;
+    }
+
+    private catalogRetryEnabled(): boolean {
+        try {
+            return (
+                globalThis.document?.documentElement?.classList.contains(
+                    'tv-shell'
+                ) === true &&
+                globalThis.localStorage?.getItem('catalog-retry') !== 'off'
+            );
+        } catch {
+            return false;
+        }
+    }
+
     private async sendRequest<TResponse>(
         credentials: XtreamCredentials,
         params: Record<string, string | number>,
