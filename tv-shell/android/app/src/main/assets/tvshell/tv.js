@@ -2016,7 +2016,7 @@
     /**
      * The player's volume slider is no D-pad stop (it trapped Left/Right, so the buttons beyond it
      * could not be reached). OK on the speaker button starts volume mode instead: arrows change the
-     * volume, OK or Back leaves it. Kill switch: localStorage['volume-mode'] = 'off'.
+     * volume, OK mutes or unmutes, Back leaves it. Kill switch: localStorage['volume-mode'] = 'off'.
      */
     var volumeMode = null;
     function exitVolumeMode() {
@@ -2043,7 +2043,13 @@
                     slider.valueAsNumber = next;
                     slider.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
                     slider.dispatchEvent(new Event('change', { bubbles: true }));
-                } else if (key === 'Enter' || key === 'Escape') {
+                } else if (key === 'Enter') {
+                    // OK inside volume mode mutes and unmutes; Back leaves the mode.
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    var speaker = volumeMode.group.querySelector('button');
+                    if (speaker) speaker.click();
+                } else if (key === 'Escape') {
                     e.preventDefault();
                     e.stopImmediatePropagation();
                     exitVolumeMode();

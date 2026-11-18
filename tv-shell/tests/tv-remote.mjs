@@ -879,7 +879,7 @@ console.log('9i. Back from a details screen returns to the card that opened it')
     await p.close();
 }
 
-console.log('9j. player controls: the volume slider is no stop; OK on the speaker adjusts the volume');
+console.log('9j. player controls: the volume slider is no stop; OK on the speaker enters volume mode');
 {
     const p = await context.newPage();
     await p.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
@@ -914,9 +914,16 @@ console.log('9j. player controls: the volume slider is no stop; OK on the speake
     const vol = await p.evaluate(() => ({ v: Number(document.getElementById('vol').value), a: document.activeElement.id, m: window.__muteClicks }));
     check(Math.abs(vol.v - 0.6) < 0.001 && vol.a === 'mute' && vol.m === 0, 'OK on the speaker, then arrows, change the volume without muting: ' + JSON.stringify(vol));
     await p.keyboard.press('Enter');
+    await p.waitForTimeout(100);
+    const afterOk = await p.evaluate(() => ({ m: window.__muteClicks, v: Number(document.getElementById('vol').value) }));
+    check(afterOk.m === 1, 'OK inside volume mode mutes: ' + JSON.stringify(afterOk));
+    await p.keyboard.press('ArrowRight');
+    await p.waitForTimeout(100);
+    check(Math.abs(Number(await p.evaluate(() => document.getElementById('vol').value)) - 0.65) < 0.001, 'arrows still change the volume after muting');
+    await p.keyboard.press('Escape');
     await p.keyboard.press('ArrowRight');
     await p.waitForTimeout(250);
-    check(await p.evaluate(() => document.activeElement.id) === 'play', 'OK leaves volume mode, and the arrows move focus again');
+    check(await p.evaluate(() => document.activeElement.id) === 'play', 'Back (Escape) leaves volume mode, and the arrows move focus again');
     await p.close();
 }
 

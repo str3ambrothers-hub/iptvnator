@@ -42,6 +42,10 @@
                     'Helvetica Neue', Arial, sans-serif;
                 z-index: 99999;
             }
+            #initial-splash .splash-logo {
+                max-width: 60vw;
+                height: auto;
+            }
             #initial-splash .splash-mark {
                 font-size: 18px;
                 font-weight: 600;
@@ -70,8 +74,8 @@
         </style>
     </head>
     <body class="mat-app-background">
-        <div id="initial-splash" role="status" aria-label="Loading IPTVnator">
-            <span class="splash-mark">IPTVnator</span>
+        <div id="initial-splash" role="status" aria-label="Loading StreamBros">
+            <img class="splash-logo" src="assets/icons/logo.png" alt="StreamBros" width="260" />
             <span class="splash-spinner" aria-hidden="true"></span>
         </div>
         <app-root></app-root>
