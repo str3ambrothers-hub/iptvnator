@@ -1493,19 +1493,33 @@
             clearTimeout(coverTimer);
             if (cover) { cover.remove(); cover = null; }
         }
-        /** The built-in player closed: drop the cover and leave the page's now-empty player. */
+        /**
+         * Closes the page's own "Now playing" panel (the web player and its error screen), so
+         * nothing of it is left to come back to. Returns whether a close button was found.
+         */
+        function closePagePlayer() {
+            try {
+                var buttons = document.querySelectorAll('button,[role="button"]');
+                for (var i = 0; i < buttons.length; i++) {
+                    var label = (buttons[i].getAttribute('aria-label') || buttons[i].textContent || '').trim();
+                    if (/^close player$/i.test(label) && buttons[i].isConnected) { buttons[i].click(); return true; }
+                }
+            } catch (err) { /* ignore */ }
+            return false;
+        }
+        /** The built-in player closed: drop the cover; close the page's player if it is still there. */
         window.__tvNativeClosed = function () {
             if (!cover) return;
-            var v = coverVideo;
             coverVideo = null;
+            closePagePlayer();
             hideCover();
-            try { if (v && v.isConnected && api.back) api.back(); } catch (err) { /* ignore */ }
         };
         function handOff(v, url) {
             showCover(v);
             try { v.pause(); } catch (err) { /* ignore */ }
             native('onSilentPlayback', url, document.title || '');
-            releasePageStream(v);
+            // Behind the cover: close the page's player. Without a close button, at least drop its stream.
+            if (!closePagePlayer()) releasePageStream(v);
         }
         /** Movie and episode streams hand over as soon as the page names them, before any picture shows. */
         document.addEventListener('loadstart', function (e) {
