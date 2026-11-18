@@ -762,6 +762,31 @@ console.log('9e. a Refresh button sits beside the add button in the top bar');
     await p.close();
 }
 
+console.log('9f. focus moves to Play when it appears after a page change');
+{
+    const p = await context.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
+    await p.goto(URL_, { waitUntil: 'networkidle' });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => {
+        document.body.innerHTML = `
+          <nav style="position:fixed;left:0;top:0"><a href="#dash" id="dash">Dashboard</a></nav>
+          <main style="position:fixed;left:300px;top:200px"><button id="card">Card</button></main>`;
+        document.getElementById('card').focus();
+    });
+    await p.evaluate(() => {
+        history.pushState({}, '', '#detail');
+        document.getElementById('card').remove();
+        setTimeout(() => {
+            document.querySelector('main').innerHTML = '<button class="play-btn" id="play">Play</button>';
+        }, 900);
+    });
+    await p.waitForTimeout(2000);
+    const id = await p.evaluate(() => document.activeElement.id);
+    check(id === 'play', 'focus ends on Play although it appears after the page changed: ' + id);
+    await p.close();
+}
+
 console.log('10. D-pad robustness: queued repeats, snack bars, animated rails');
 {
     const r = await page.evaluate(() => {

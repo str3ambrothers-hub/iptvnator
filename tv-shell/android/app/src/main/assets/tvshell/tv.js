@@ -805,6 +805,7 @@
     function onKeyDown(event) {
         if (event.defaultPrevented && !event.__tvshell) return;
         var dir = DIR[event.key];
+        if (dir) lastArrowAt = Date.now();
         var active = document.activeElement;
         // Release before the browser performs the hardware keyboard's default editing action.
         if (active && active.hasAttribute(KEYBOARD_HELD) && isHardwareEdit(event)) {
@@ -1810,12 +1811,40 @@
             navDepth += 1;
             var result = pushState.apply(this, arguments);
             scheduleRefocus();
+            watchForPlay();
             return result;
         };
         window.addEventListener('popstate', function () {
             if (navDepth > 0) navDepth -= 1;
             scheduleRefocus();
         });
+    }
+
+    /**
+     * A details screen draws its Play button a moment after the page changes (the details are fetched
+     * first), by which time focus has already been placed elsewhere. For a few seconds after a page
+     * change, until the D-pad is used, focus moves to the Play button as soon as it appears.
+     * Kill switch: localStorage['focus-play'] = 'off'.
+     */
+    var lastArrowAt = 0;
+    var playWatch = null;
+    function watchForPlay() {
+        try { if (localStorage.getItem('focus-play') === 'off') return; } catch (err) { /* default on */ }
+        var stamp = Date.now();
+        var ticks = 0;
+        if (playWatch) clearInterval(playWatch);
+        playWatch = setInterval(function () {
+            if (++ticks > 40 || lastArrowAt > stamp) { clearInterval(playWatch); playWatch = null; return; }
+            var buttons = document.querySelectorAll('.play-btn:not(.play-btn--secondary)');
+            for (var i = 0; i < buttons.length; i++) {
+                var el = buttons[i];
+                if (!qualifies(el)) continue;
+                if (document.activeElement !== el) setFocus(el, { silent: true });
+                clearInterval(playWatch);
+                playWatch = null;
+                return;
+            }
+        }, 200);
     }
 
     var refocusTimer = null;
