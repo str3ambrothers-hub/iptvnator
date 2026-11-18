@@ -19,6 +19,10 @@ import { CoverTitlesService } from '../../cover-titles/cover-titles.service';
 import { posterProxyUrl } from './poster-proxy';
 
 /** Channel-like cards always keep their label: logos rarely identify them. */
+/** A failed cached poster is retried this many times, a little later each time, before the original address is tried. */
+const POSTER_PROXY_RETRIES = 2;
+const POSTER_PROXY_RETRY_DELAY_MS = 1500;
+
 const LABELLED_CONTENT_TYPES: ReadonlySet<string> = new Set(['live', 'radio']);
 
 @Component({
@@ -85,11 +89,20 @@ export class ContentCardComponent {
         source: this.posterUrl,
         computation: () => false,
     });
+    /** Retries of the cached copy so far: a busy or slow image server often answers the next time. */
+    private readonly proxyRetries = linkedSignal({
+        source: this.posterUrl,
+        computation: () => 0,
+    });
     /** What the image loads: the cached copy in the TV shell, the original elsewhere or after a failure. */
     protected readonly posterSrc = computed(() => {
         const url = this.posterUrl();
         if (!url || this.proxyFailed()) return url;
-        return posterProxyUrl(this.document, url);
+        const proxied = posterProxyUrl(this.document, url);
+        const retries = this.proxyRetries();
+        return retries > 0 && proxied !== url
+            ? `${proxied}&r=${retries}`
+            : proxied;
     });
     protected readonly artworkMissing = computed(
         () => !this.posterUrl() || this.artworkFailed()
@@ -142,6 +155,17 @@ export class ContentCardComponent {
 
     onImageError(): void {
         if (this.posterSrc() !== this.posterUrl()) {
+            const retries = this.proxyRetries();
+            if (retries < POSTER_PROXY_RETRIES) {
+                const url = this.posterUrl();
+                setTimeout(() => {
+                    // Still the same card and poster: try the cached copy again.
+                    if (this.posterUrl() === url && !this.proxyFailed()) {
+                        this.proxyRetries.set(retries + 1);
+                    }
+                }, POSTER_PROXY_RETRY_DELAY_MS * (retries + 1));
+                return;
+            }
             this.proxyFailed.set(true);
             return;
         }

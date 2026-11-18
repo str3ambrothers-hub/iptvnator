@@ -63,16 +63,19 @@ public final class ImageCache {
         }
     }
 
-    public static final int MAX_PARALLEL = 3;
+    public static final int MAX_PARALLEL = 6;
     public static final int MIN_WIDTH = 64;
     public static final int MAX_WIDTH = 720;
     public static final int DEFAULT_WIDTH = 360;
     static final long MAX_DOWNLOAD_BYTES = 8L * 1024 * 1024;
     private static final int FETCH_TIMEOUT_MS = 15_000;
     private static final long WAIT_FOR_SLOT_MS = 25_000;
+    /** A poster the provider says is gone (404, not an image) is not asked again for this long. */
     private static final long FAILURE_MEMORY_MS = 10 * 60 * 1000L;
+    /** A slow or unreachable image server is retried soon: the next try often works. */
+    private static final long TRANSIENT_FAILURE_MEMORY_MS = 15 * 1000L;
     private static final int MAX_REMEMBERED_FAILURES = 2_000;
-    private static final int LOCK_STRIPES = 16;
+    private static final int LOCK_STRIPES = 256;
 
     private final File dir;
     private final long maxBytes;
@@ -103,9 +106,9 @@ public final class ImageCache {
         Image cached = read(file);
         if (cached != null) return cached;
 
-        Long failedAt = failures.get(key);
-        if (failedAt != null) {
-            if (System.currentTimeMillis() - failedAt < FAILURE_MEMORY_MS) throw new Unavailable(404, "Image unavailable");
+        Long failedUntil = failures.get(key);
+        if (failedUntil != null) {
+            if (System.currentTimeMillis() < failedUntil) throw new Unavailable(404, "Image unavailable");
             failures.remove(key);
         }
         synchronized (locks[(key.hashCode() & 0x7fffffff) % LOCK_STRIPES]) {
@@ -123,7 +126,7 @@ public final class ImageCache {
                 failures.remove(key);
                 return fresh;
             } catch (Unavailable e) {
-                if (e.status != 503) remember(key);
+                if (e.status != 503) remember(key, e.status == 502 ? TRANSIENT_FAILURE_MEMORY_MS : FAILURE_MEMORY_MS);
                 throw e;
             } finally {
                 slots.release();
@@ -241,9 +244,9 @@ public final class ImageCache {
         }
     }
 
-    private void remember(String key) {
+    private void remember(String key, long forMs) {
         if (failures.size() >= MAX_REMEMBERED_FAILURES) failures.clear();
-        failures.put(key, Long.valueOf(System.currentTimeMillis()));
+        failures.put(key, Long.valueOf(System.currentTimeMillis() + forMs));
     }
 
     // ------------------------------------------------------------ validation
