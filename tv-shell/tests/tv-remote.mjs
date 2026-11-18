@@ -814,6 +814,31 @@ console.log('9g. a Back button on the details screen presses the top bar Back');
     await p.close();
 }
 
+console.log('9h. a details screen hides the category list');
+{
+    const p = await context.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
+    await p.goto(URL_, { waitUntil: 'networkidle' });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => {
+        document.body.innerHTML = `
+          <div class="workspace-body" style="display:grid;grid-template-columns:auto minmax(0,1fr)">
+            <app-workspace-shell-context-sidebar id="cats"><button>Action</button></app-workspace-shell-context-sidebar>
+            <div class="workspace-content-frame"><main id="content"></main></div>
+          </div>`;
+    });
+    await p.waitForTimeout(600);
+    const shown = () => p.evaluate(() => getComputedStyle(document.getElementById('cats')).display !== 'none');
+    check(await shown(), 'categories show on a list screen');
+    await p.evaluate(() => { document.getElementById('content').innerHTML = '<app-portal-detail-shell></app-portal-detail-shell>'; });
+    await p.waitForTimeout(600);
+    check(!(await shown()), 'categories are hidden on a details screen');
+    await p.evaluate(() => { document.getElementById('content').innerHTML = ''; });
+    await p.waitForTimeout(600);
+    check(await shown(), 'categories come back after the details screen closes');
+    await p.close();
+}
+
 console.log('10. D-pad robustness: queued repeats, snack bars, animated rails');
 {
     const r = await page.evaluate(() => {

@@ -84,6 +84,9 @@
         var style = document.createElement('style');
         style.setAttribute('data-tvshell', '');
         style.textContent =
+            // A movie or series details screen takes the whole width: the category list steps aside.
+            'html.tv-detail app-workspace-shell-context-sidebar{display:none!important}' +
+            'html.tv-detail .workspace-body{grid-template-columns:minmax(0,1fr)!important}' +
             '.' + FOCUS_CLASS + '{outline:3px solid var(--app-focus-ring,#7cc4ff)!important;outline-offset:2px!important;' +
             'scroll-margin:32px;box-shadow:0 0 0 3px rgba(0,0,0,.55)!important;border-radius:6px}' +
             'video.' + FOCUS_CLASS + '{outline-offset:-3px!important}' +
@@ -1957,6 +1960,16 @@
         inner.insertBefore(btn, inner.firstChild);
     }
 
+
+    // ------------------------------------------------------- full-width details
+    /** Marks the page while a details screen is open, so the category list can step aside (see installStyle). */
+    function syncDetailMode() {
+        var on = !!document.querySelector('app-portal-detail-shell');
+        try { if (localStorage.getItem('detail-fullscreen') === 'off') on = false; } catch (err) { /* default on */ }
+        var root = document.documentElement;
+        if (on !== root.classList.contains('tv-detail')) root.classList.toggle('tv-detail', on);
+    }
+
     // ------------------------------------------------------------- init
     function init() {
         document.documentElement.classList.add('tv-shell');
@@ -1969,6 +1982,7 @@
         installFocusMirror();
         // The top bar is redrawn by Angular now and then: put the button back when it goes missing.
         setInterval(function () { ensureRefreshButton(); ensurePageBack(); }, 1000);
+        setInterval(syncDetailMode, 250);
         document.addEventListener('keydown', onKeyDown, true);
         // Keyups arrive in queue order: a keydown after one is a new press, however late it runs.
         document.addEventListener('keyup', function (e) {
