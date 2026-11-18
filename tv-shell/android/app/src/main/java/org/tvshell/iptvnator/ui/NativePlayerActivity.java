@@ -72,7 +72,22 @@ public class NativePlayerActivity extends android.app.Activity {
         back.setAllCaps(false);
         back.setTextColor(android.graphics.Color.WHITE);
         back.setTextSize(18);
-        back.setBackgroundColor(0xB3000000);
+        // Dark when idle; bright blue with a white edge when the remote, mouse or touch is on it.
+        android.graphics.drawable.StateListDrawable backBg = new android.graphics.drawable.StateListDrawable();
+        int[][] lit = {
+            {android.R.attr.state_focused}, {android.R.attr.state_hovered}, {android.R.attr.state_pressed}};
+        for (int[] state : lit) {
+            android.graphics.drawable.GradientDrawable on = new android.graphics.drawable.GradientDrawable();
+            on.setColor(0xFF2F6FED);
+            on.setStroke(4, android.graphics.Color.WHITE);
+            on.setCornerRadius(8);
+            backBg.addState(state, on);
+        }
+        android.graphics.drawable.GradientDrawable off = new android.graphics.drawable.GradientDrawable();
+        off.setColor(0xB3000000);
+        off.setCornerRadius(8);
+        backBg.addState(new int[0], off);
+        back.setBackground(backBg);
         back.setFocusable(true);
         back.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { finish(); }

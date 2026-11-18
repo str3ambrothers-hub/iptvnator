@@ -1475,9 +1475,10 @@
          * player until it closes, so the page's own player is never seen. Removed when the shell
          * comes back to the foreground, or after a few seconds if the player never opened.
          */
-        var cover = null, coverTimer = 0, coverVideo = null;
+        var cover = null, coverTimer = 0, coverVideo = null, nativeOpen = false;
         function showCover(v) {
             coverVideo = v || null;
+            nativeOpen = true;
             if (!cover) {
                 cover = document.createElement('div');
                 cover.setAttribute('data-tvshell-cover', '');
@@ -1509,17 +1510,33 @@
         }
         /** The built-in player closed: drop the cover; close the page's player if it is still there. */
         window.__tvNativeClosed = function () {
-            if (!cover) return;
+            // The cover may be gone already (it times out while a movie plays); the page's player
+            // still has to be closed when the built-in player is.
+            if (!nativeOpen) return;
+            nativeOpen = false;
             coverVideo = null;
             closePagePlayer();
             hideCover();
+            // The panel can render a moment late: look again for a short while.
+            var tries = 0;
+            var again = setInterval(function () {
+                if (++tries > 8 || !document.querySelector('app-portal-detail-shell') ) { clearInterval(again); return; }
+                if (closePagePlayer()) clearInterval(again);
+            }, 250);
         };
         function handOff(v, url) {
             showCover(v);
             try { v.pause(); } catch (err) { /* ignore */ }
             native('onSilentPlayback', url, document.title || '');
             // Behind the cover: close the page's player. Without a close button, at least drop its stream.
-            if (!closePagePlayer()) releasePageStream(v);
+            if (!closePagePlayer()) {
+                releasePageStream(v);
+                // The close button may not be drawn yet at this moment: keep looking for a moment.
+                var tries = 0;
+                var poll = setInterval(function () {
+                    if (++tries > 10 || closePagePlayer()) clearInterval(poll);
+                }, 300);
+            }
         }
         /** Movie and episode streams hand over as soon as the page names them, before any picture shows. */
         document.addEventListener('loadstart', function (e) {
