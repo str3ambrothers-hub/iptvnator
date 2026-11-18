@@ -1045,15 +1045,14 @@
     // ---------------------------------------------------------------- diagnostics
     /** Menu pressed five times quickly shows frame rate, memory and page size; OK toggles native live TV. */
     var diag = { el: null, raf: 0, frames: 0, since: 0, fps: 0, worst: 0, lastFrame: 0, timer: 0, presses: [] };
-    function nativeLiveOn() {
-        try { return localStorage.getItem('native-live') === 'on'; } catch (err) { return false; }
-    }
+    /** Live TV always plays in the app's own web player; only movies and episodes use the built-in one. */
+    function nativeLiveOn() { return false; }
     function diagText() {
         var mem = window.performance && performance.memory;
         var heap = mem ? Math.round(mem.usedJSHeapSize / 1048576) + ' MB' : 'n/a';
         return 'FPS ' + diag.fps + '   worst frame ' + Math.round(diag.worst) + ' ms\n' +
             'JS heap ' + heap + '   DOM nodes ' + document.getElementsByTagName('*').length + '\n' +
-            'Native live TV: ' + (nativeLiveOn() ? 'ON' : 'off') + '  (OK toggles, Menu x5 closes)';
+            'Menu x5 closes';
     }
     function diagFrame(now) {
         if (!diag.el) return;
@@ -1070,17 +1069,9 @@
         }
         diag.raf = requestAnimationFrame(diagFrame);
     }
-    function diagKey(event) {
-        if (!diag.el || event.key !== 'Enter') return;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        try { localStorage.setItem('native-live', nativeLiveOn() ? 'off' : 'on'); } catch (err) { /* ignore */ }
-        diag.el.textContent = diagText();
-    }
     function toggleDiag() {
         if (diag.el) {
             cancelAnimationFrame(diag.raf);
-            document.removeEventListener('keydown', diagKey, true);
             diag.el.remove();
             diag.el = null;
             return;
@@ -1092,7 +1083,6 @@
         diag.frames = 0; diag.since = 0; diag.worst = 0; diag.lastFrame = 0; diag.ticks = 0;
         diag.el.textContent = diagText();
         document.body.appendChild(diag.el);
-        document.addEventListener('keydown', diagKey, true);
         diag.raf = requestAnimationFrame(function (now) { diag.since = now; diagFrame(now); });
     }
     function diagPress() {
@@ -1588,9 +1578,12 @@
         function isVodUrl(url) {
             var path = String(url || '').split('?')[0];
             if (!path) return false;
-            // Live channels (/live/, HLS playlists, raw MPEG-TS) stay in the page; any other stream
-            // (movie, series, whatever path or extension the provider uses) is a movie.
-            return !/\/live\//.test(path) && !/\.(m3u8?|ts)$/i.test(path);
+            // Live channels stay in the page: anything under /live/, HLS playlists, raw MPEG-TS, a stream
+            // with no file extension (the older /user/pass/id live form), or anything played from a
+            // live screen. A movie or episode is /movie/ or /series/, or ends in a video file extension.
+            if (/\/live(\/|$)/.test(location.pathname)) return false;
+            if (/\/live\//.test(path) || /\.(m3u8?|ts)$/i.test(path)) return false;
+            return /\/(movie|series)\//.test(path) || /\.(mkv|mp4|avi|mov|wmv|flv|webm|m4v|mpe?g)$/i.test(path);
         }
         function reportPlaybackError(url, title, code) {
             if (nativeLiveOn() || (nativeMoviesOn() && isVodUrl(url))) {
@@ -1647,7 +1640,7 @@
             try { if (localStorage.getItem('native-movies') === 'off') return; } catch (err) { /* default on */ }
             if (!isFinite(v.duration) || v.duration < 120) return;
             var url = api.currentStreamUrl();
-            if (!url || !claimNative(url)) return;
+            if (!url || !isVodUrl(url) || !claimNative(url)) return;
             handOff(v, url);
         }, true);
         function watchForSilence(v) {
@@ -1667,7 +1660,7 @@
                 if (v.muted || v.volume === 0) return;
                 if (!isFinite(v.duration) || v.duration < 120) return; // live TV and short clips: skip
                 var url = api.currentStreamUrl();
-                if (!url || !claimNative(url)) return;
+                if (!url || !isVodUrl(url) || !claimNative(url)) return;
                 native('onSilentPlayback', url, document.title || '');
             }, 1000);
         }

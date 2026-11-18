@@ -649,12 +649,24 @@ console.log('9b. under the Android bridge: movies and episodes go straight to th
         l.dispatchEvent(new Event('error'));
         await wait(1200);
         out.live = calls();
+        // The older live form has no /live/ and no file extension: still live.
+        document.querySelectorAll('video').forEach((v) => v.remove());
+        const b = document.createElement('video');
+        b.src = provider + '/user/pass/7';
+        document.body.appendChild(b);
+        window.__calls.length = 0;
+        Object.defineProperty(b, 'error', { configurable: true, get: () => ({ code: 4 }) });
+        b.dispatchEvent(new Event('play'));
+        b.dispatchEvent(new Event('error'));
+        await wait(1200);
+        out.bare = calls();
         return out;
     }, PROVIDER);
     check(r.movie.join(',') === 'onSilentPlayback', 'a movie goes to the built-in player when it starts: ' + r.movie.join(','));
     check(r.episode.join(',').startsWith('onSilentPlayback') && !r.episode.join(',').includes('onPlaybackError'),
         'a format error on an episode opens the built-in player, not the prompt: ' + r.episode.join(','));
     check(r.live.join(',') === 'onPlaybackError', 'live TV keeps the prompt: ' + r.live.join(','));
+    check(r.bare.join(',') === 'onPlaybackError', 'a live stream without /live/ or a file extension stays in the page: ' + r.bare.join(','));
     const cover = await movie.evaluate(() => {
         const had = !!document.querySelector('[data-tvshell-cover]');
         window.__tvNativeClosed();
