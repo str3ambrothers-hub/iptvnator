@@ -638,7 +638,8 @@ console.log('9b. under the Android bridge: movies and episodes go straight to th
         w.dispatchEvent(new Event('error'));
         await wait(1200);
         out.episode = calls();
-        // Live TV keeps the prompt.
+        // Live TV keeps the prompt. (Movie players that were handed off have released their stream; clear them.)
+        document.querySelectorAll('video').forEach((v) => v.remove());
         const l = document.createElement('video');
         l.src = provider + '/live/user/pass/7.m3u8';
         document.body.appendChild(l);
