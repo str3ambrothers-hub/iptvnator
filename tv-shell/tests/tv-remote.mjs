@@ -879,6 +879,47 @@ console.log('9i. Back from a details screen returns to the card that opened it')
     await p.close();
 }
 
+console.log('9j. player controls: the volume slider is no stop; OK on the speaker adjusts the volume');
+{
+    const p = await context.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
+    await p.goto(URL_, { waitUntil: 'networkidle' });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => {
+        document.body.innerHTML = `
+          <div class="player-controls__bar" style="position:fixed;left:50px;top:300px;display:flex;gap:30px;align-items:center">
+            <div class="player-controls__volume" style="display:flex">
+              <button id="mute">Speaker</button>
+              <input id="vol" class="player-controls__slider player-controls__slider--volume" type="range" min="0" max="1" step="0.01" value="0.5" style="width:120px">
+            </div>
+            <button id="play">Play</button>
+            <button id="full">Fullscreen</button>
+          </div>`;
+        window.__muteClicks = 0;
+        document.getElementById('mute').addEventListener('click', () => { window.__muteClicks++; });
+    });
+    await p.focus('#mute');
+    await p.keyboard.press('ArrowRight');
+    await p.waitForTimeout(250);
+    check(await p.evaluate(() => document.activeElement.id) === 'play', 'Right from the speaker skips the slider and reaches Play');
+    await p.keyboard.press('ArrowRight');
+    await p.waitForTimeout(250);
+    check(await p.evaluate(() => document.activeElement.id) === 'full', 'Right again reaches Fullscreen');
+    await p.focus('#mute');
+    await p.keyboard.press('Enter');
+    await p.waitForTimeout(150);
+    await p.keyboard.press('ArrowRight');
+    await p.keyboard.press('ArrowRight');
+    await p.waitForTimeout(150);
+    const vol = await p.evaluate(() => ({ v: Number(document.getElementById('vol').value), a: document.activeElement.id, m: window.__muteClicks }));
+    check(Math.abs(vol.v - 0.6) < 0.001 && vol.a === 'mute' && vol.m === 0, 'OK on the speaker, then arrows, change the volume without muting: ' + JSON.stringify(vol));
+    await p.keyboard.press('Enter');
+    await p.keyboard.press('ArrowRight');
+    await p.waitForTimeout(250);
+    check(await p.evaluate(() => document.activeElement.id) === 'play', 'OK leaves volume mode, and the arrows move focus again');
+    await p.close();
+}
+
 console.log('10. D-pad robustness: queued repeats, snack bars, animated rails');
 {
     const r = await page.evaluate(() => {

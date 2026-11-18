@@ -244,7 +244,7 @@
      * search), the "and more" link (the cast row is right below), and a rail's scroll arrows (moving
      * along the rail scrolls it). Kill switch: localStorage['tv-trim-focus'] = 'off'.
      */
-    var FOCUS_NOISE = '.meta-chip__facet,.credits__more,.rail__arrow';
+    var FOCUS_NOISE = '.meta-chip__facet,.credits__more,.rail__arrow,.player-controls__slider--volume';
     var trimFocus = true;
     try { trimFocus = localStorage.getItem('tv-trim-focus') !== 'off'; } catch (err) { /* default on */ }
 
@@ -991,6 +991,7 @@
 
     /** Back button. Returns true when consumed by the page. */
     api.back = function () {
+        if (exitVolumeMode()) return true;
         var active = document.activeElement;
         // Open overlay (dialog, menu, select panel, bottom sheet, popover): Escape closes it.
         var pane = document.querySelector('.cdk-overlay-pane [role="dialog"],.cdk-overlay-pane [role="menu"],.cdk-overlay-pane [role="listbox"],.cdk-overlay-pane mat-bottom-sheet-container,.cdk-overlay-pane .mat-mdc-autocomplete-panel');
@@ -2010,6 +2011,59 @@
         }, 200);
     }
 
+
+    // ------------------------------------------------------- player volume mode
+    /**
+     * The player's volume slider is no D-pad stop (it trapped Left/Right, so the buttons beyond it
+     * could not be reached). OK on the speaker button starts volume mode instead: arrows change the
+     * volume, OK or Back leaves it. Kill switch: localStorage['volume-mode'] = 'off'.
+     */
+    var volumeMode = null;
+    function exitVolumeMode() {
+        if (!volumeMode) return false;
+        volumeMode.group.classList.remove('tv-volume-active');
+        volumeMode = null;
+        return true;
+    }
+    function installVolumeMode() {
+        try { if (localStorage.getItem('volume-mode') === 'off') return; } catch (err) { /* default on */ }
+        var st = document.createElement('style');
+        st.textContent = '.tv-volume-active .player-controls__slider--volume{outline:3px solid #7cc4ff!important;outline-offset:3px;border-radius:6px}';
+        document.head.appendChild(st);
+        document.addEventListener('keydown', function (e) {
+            var key = e.key;
+            if (volumeMode) {
+                if (/^Arrow/.test(key)) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    var slider = volumeMode.group.querySelector('.player-controls__slider--volume');
+                    if (!slider) { exitVolumeMode(); return; }
+                    var up = key === 'ArrowRight' || key === 'ArrowUp';
+                    var next = Math.max(0, Math.min(1, slider.valueAsNumber + (up ? 0.05 : -0.05)));
+                    slider.valueAsNumber = next;
+                    slider.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                    slider.dispatchEvent(new Event('change', { bubbles: true }));
+                } else if (key === 'Enter' || key === 'Escape') {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    exitVolumeMode();
+                }
+                return;
+            }
+            if (key !== 'Enter') return;
+            var active = document.activeElement;
+            var group = active && active.tagName === 'BUTTON' && active.closest('.player-controls__volume');
+            if (!group || !group.querySelector('.player-controls__slider--volume')) return;
+            e.preventDefault(); // not a mute toggle: the speaker is the way into the volume
+            e.stopImmediatePropagation();
+            volumeMode = { group: group };
+            group.classList.add('tv-volume-active');
+        }, true);
+        document.addEventListener('focusin', function (e) {
+            if (volumeMode && !volumeMode.group.contains(e.target)) exitVolumeMode();
+        }, true);
+    }
+
     // ------------------------------------------------------------- init
     function init() {
         document.documentElement.classList.add('tv-shell');
@@ -2025,6 +2079,7 @@
         setInterval(syncDetailMode, 1000);
         // In the same frame as the change, so the category list never flashes in or out.
         new MutationObserver(syncDetailMode).observe(document.documentElement, { childList: true, subtree: true });
+        installVolumeMode(); // before onKeyDown, so it sees OK and the arrows first
         document.addEventListener('keydown', onKeyDown, true);
         // Keyups arrive in queue order: a keydown after one is a new press, however late it runs.
         document.addEventListener('keyup', function (e) {
