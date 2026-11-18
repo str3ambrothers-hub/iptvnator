@@ -81,7 +81,25 @@ export class SettingsService {
     }
 
     private resolveSystemTheme(deviceIsDark: boolean): Theme {
-        return deviceIsDark ? this.systemThemes.dark : this.systemThemes.light;
+        return deviceIsDark || this.tvShellPrefersDark()
+            ? this.systemThemes.dark
+            : this.systemThemes.light;
+    }
+
+    /**
+     * TV screens are dark by default: Fire TV's WebView reports a light device
+     * while the emulator reports dark. Kill switch:
+     * `localStorage['tv-dark-default'] = 'off'`.
+     */
+    private tvShellPrefersDark(): boolean {
+        try {
+            const inShell =
+                document.documentElement.classList.contains('tv-shell') ||
+                navigator.userAgent.includes('IPTVnator/');
+            return inShell && localStorage.getItem('tv-dark-default') !== 'off';
+        } catch {
+            return false;
+        }
     }
 
     /**
