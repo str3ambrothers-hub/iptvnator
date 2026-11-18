@@ -24,6 +24,8 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.extractor.DefaultExtractorsFactory;
+import androidx.media3.extractor.mkv.MatroskaExtractor;
 import androidx.media3.ui.PlayerView;
 
 import org.tvshell.iptvnator.R;
@@ -69,6 +71,10 @@ public class NativePlayerActivity extends android.app.Activity {
     }
 
     private boolean softwareDecoders;
+    /** Reading the stream failed (a bad or refused response, not a codec): tries made again so far. */
+    private int sourceRetries;
+    private static final int MAX_SOURCE_RETRIES = 2;
+    private final android.os.Handler retryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     /** The stream's formats as announced by the tracks: the player drops its own when a decoder fails. */
     private androidx.media3.common.Format seenVideo;
     private androidx.media3.common.Format seenAudio;
@@ -94,8 +100,12 @@ public class NativePlayerActivity extends android.app.Activity {
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(20_000)
             .setUserAgent("VLC/3.0.20 LibVLC/3.0.20");
+        // Second retry of a failed read: do not seek to the index at the end of an MKV file. Some
+        // providers answer that ranged request with the wrong bytes, which breaks the parser.
+        DefaultExtractorsFactory extractors = new DefaultExtractorsFactory();
+        if (sourceRetries >= 2) extractors.setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES);
         player = new ExoPlayer.Builder(this, renderers)
-            .setMediaSourceFactory(new DefaultMediaSourceFactory(this).setDataSourceFactory(http))
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(this, extractors).setDataSourceFactory(http))
             .build();
         player.addListener(new Player.Listener() {
             @Override
@@ -105,6 +115,24 @@ public class NativePlayerActivity extends android.app.Activity {
                     || error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES;
                 if (decoderFailure && !softwareDecoders && player != null) {
                     startPlayer(url, true, Math.max(0, player.getCurrentPosition()));
+                    return;
+                }
+                boolean sourceFailure = error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                    || error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED
+                    || error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+                    || error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+                    || error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT;
+                if (sourceFailure && sourceRetries < MAX_SOURCE_RETRIES && player != null) {
+                    // A provider that limits connections or answers a seek wrongly often succeeds on
+                    // a fresh connection a moment later.
+                    sourceRetries++;
+                    final long resumeAt = Math.max(0, player.getCurrentPosition());
+                    final boolean software = softwareDecoders;
+                    retryHandler.postDelayed(new Runnable() {
+                        @Override public void run() {
+                            if (!isFinishing()) startPlayer(url, software, resumeAt);
+                        }
+                    }, 2000);
                     return;
                 }
                 showError(error);
@@ -172,6 +200,7 @@ public class NativePlayerActivity extends android.app.Activity {
         androidx.media3.common.Format audio = seenAudio != null ? seenAudio : (player == null ? null : player.getAudioFormat());
         if (audio != null) detail.append("\nAudio: ").append(audio.sampleMimeType).append(" ").append(audio.channelCount).append("ch");
         if (softwareDecoders) detail.append("\n(software decoder tried)");
+        if (sourceRetries > 0) detail.append("\n(reading the stream was retried ").append(sourceRetries).append(sourceRetries == 1 ? " time)" : " times)");
         if (detail.length() > 900) detail.setLength(900);
         final String url = getIntent().getStringExtra(EXTRA_URL);
         final String title = getIntent().getStringExtra(EXTRA_TITLE);
@@ -238,6 +267,7 @@ public class NativePlayerActivity extends android.app.Activity {
 
     @Override
     protected void onDestroy() {
+        retryHandler.removeCallbacksAndMessages(null);
         if (player != null) {
             player.release();
             player = null;
