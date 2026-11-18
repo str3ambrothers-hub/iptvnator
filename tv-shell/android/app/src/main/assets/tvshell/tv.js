@@ -1458,9 +1458,19 @@
                 if (t.tagName === 'VIDEO' && (nativeLiveOn() || (nativeMoviesOn() && isVodUrl(startUrl))) && claimNative(startUrl)) {
                     try { t.pause(); } catch (err) { /* ignore */ }
                     native('onSilentPlayback', startUrl, document.title || '');
+                    releasePageStream(t);
                 }
             }
         }, true);
+        /**
+         * Providers often allow one connection per account. A paused page video keeps its download
+         * open, so the built-in player's own connection can be refused; drop the page's stream first.
+         * Kill switch: localStorage['free-page-stream'] = 'off'.
+         */
+        function releasePageStream(v) {
+            try { if (localStorage.getItem('free-page-stream') === 'off') return; } catch (err) { /* default on */ }
+            try { v.pause(); v.removeAttribute('src'); v.load(); } catch (err) { /* ignore */ }
+        }
         var silenceChecked = {};
         /** True once per URL per 8 s, so one tap opens the player once but a later tap opens it again. */
         function claimNative(url) {
@@ -1541,6 +1551,7 @@
             if (!url || !claimNative(url)) return;
             try { v.pause(); } catch (err) { /* ignore */ }
             native('onSilentPlayback', url, document.title || '');
+            releasePageStream(v);
         }, true);
         function watchForSilence(v) {
             try { if (localStorage.getItem('silent-check') === 'off') return; } catch (e) { /* default on */ }
