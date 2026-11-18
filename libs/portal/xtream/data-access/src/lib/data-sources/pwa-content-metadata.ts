@@ -17,6 +17,7 @@ import {
     type XtreamContentItem,
 } from './xtream-data-source.interface';
 import type { XtreamCachedContentItem } from './pwa-cached-content';
+import { slimCatalogueItem } from './pwa-catalogue-store';
 import { rememberColdFavoriteMetadata } from './pwa-cold-favorite';
 
 /** Catalog-only lookup keeps the original type order and prefers fully confirmed duplicates. */
@@ -54,9 +55,12 @@ export function findPwaCachedContent(
 /** Provider rows are normalized only when a catalog is fetched or saved. */
 export function normalizePwaCatalogContent(
     items: readonly XtreamCachedContentItem[],
-    type: 'live' | 'movie' | 'series'
+    type: 'live' | 'movie' | 'series',
+    slim = false
 ): XtreamContentItem[] {
-    return items.map((item) => {
+    return items.map((rawItem) => {
+        // Slim: long detail-only text never enters memory, instead of being copied away later.
+        const item = slim ? slimCatalogueItem(rawItem) : rawItem;
         const xtreamId = cachedContentIdentity(item, type);
         const title = item.title ?? item.name ?? item.stream_display_name ?? '';
         const posterUrl =

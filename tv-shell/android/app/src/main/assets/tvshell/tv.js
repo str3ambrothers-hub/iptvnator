@@ -118,8 +118,7 @@
         'html.tv-shell lib-dashboard-hero .hero__content{animation:none!important}' +
         'html.tv-shell lib-dashboard-hero .hero__backdrop,html.tv-shell lib-dashboard-hero .hero__backdrop-image{transition:none!important}' +
         // Blurred glass panels re-blur everything behind them on every frame they change.
-        'html.tv-shell *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}' +
-        'html.tv-shell *{text-shadow:none!important}';
+        'html.tv-shell *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}';
 
     /** Kill switch for the motion rules: localStorage['tvshell.fullMotion'] = '1', then reload.
      *  Added in October 2026; remove it two releases later if nobody needs it. */

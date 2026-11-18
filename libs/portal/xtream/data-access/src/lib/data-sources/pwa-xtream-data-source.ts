@@ -51,6 +51,7 @@ import {
 import {
     CATALOGUE_REVALIDATE_AFTER_MS,
     createCatalogueStore,
+    isSlimSavingEnabled,
 } from './pwa-catalogue-store';
 
 const SEARCH_CHUNK = 4000;
@@ -657,7 +658,11 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
     ): Promise<XtreamContentItem[]> {
         const { normalizePwaCatalogContent } =
             await import('./pwa-content-metadata');
-        return normalizePwaCatalogContent(streams, type);
+        return normalizePwaCatalogContent(
+            streams,
+            type,
+            this.catalogueStore.enabled && isSlimSavingEnabled(this.document)
+        );
     }
 
     // =========================================================================
@@ -668,9 +673,22 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
     private warmSearchIndex(cacheKey: string): void {
         if (!searchIndexEnabled(this.document)) return;
         setTimeout(() => {
-            const content = this.contentCache.get(cacheKey);
-            if (content) this.foldedTitles(content, true);
-        }, 3000);
+            void (async () => {
+                const content = this.contentCache.get(cacheKey);
+                if (!content || this.foldedIndex.has(content)) return;
+                const folded: string[] = [];
+                // In small slices, so a big library never freezes the page or spikes memory.
+                for (let i = 0; i < content.length; i++) {
+                    folded.push(foldSearchText(itemTitle(content[i])));
+                    if (i % 1500 === 1499) {
+                        await new Promise<void>((r) => setTimeout(r, 30));
+                        // The list was replaced meanwhile: this index would be stale.
+                        if (this.contentCache.get(cacheKey) !== content) return;
+                    }
+                }
+                this.foldedIndex.set(content, folded);
+            })();
+        }, 6000);
     }
 
     /** Folded titles for `content`, built once per list and reused by every search. */

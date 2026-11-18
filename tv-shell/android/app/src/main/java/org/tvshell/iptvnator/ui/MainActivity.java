@@ -772,7 +772,7 @@ public class MainActivity extends Activity {
 
     private long lastTrimAt;
 
-    /** Short of memory (a Stick has little): tell the page, and drop the WebView's memory cache at most once a minute. */
+    /** Short of memory (a Stick has little): tell the page, and at most once a minute. */
     @Override
     public void onTrimMemory(int level) {
         super.onTrimMemory(level);
@@ -781,7 +781,6 @@ public class MainActivity extends Activity {
         if (now - lastTrimAt < 60_000) return;
         lastTrimAt = now;
         webView.evaluateJavascript("window.__tvTrim&&window.__tvTrim()", null);
-        webView.clearCache(false);
     }
 
     @Override
