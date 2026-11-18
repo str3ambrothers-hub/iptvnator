@@ -7,4 +7,4 @@ On Android TV and Fire TV, a movie or episode opens in the built-in player witho
 
 A movie's details screen also asks the provider a second time when the first answer comes back empty, so "Portal metadata unavailable" shows less often.
 
-The built-in player starts sooner, decodes no more picture than the screen shows, seeks to the nearest keyframe, and the hidden page's timers are paused while it plays.
+The hidden page's timers are paused while the built-in player plays, leaving the processor to the player.

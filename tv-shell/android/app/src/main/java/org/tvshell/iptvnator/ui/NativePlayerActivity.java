@@ -143,21 +143,7 @@ public class NativePlayerActivity extends android.app.Activity {
         // providers answer that ranged request with the wrong bytes, which breaks the parser.
         DefaultExtractorsFactory extractors = new DefaultExtractorsFactory();
         if (sourceRetries >= 2) extractors.setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES);
-        // Start sooner (about 1 s of buffer instead of 2.5 s) but still buffer well ahead, with a
-        // ceiling that suits a stick's memory.
-        androidx.media3.exoplayer.DefaultLoadControl loadControl = new androidx.media3.exoplayer.DefaultLoadControl.Builder()
-            .setBufferDurationsMs(20_000, 45_000, 1_000, 3_000)
-            .build();
-        // Never decode more picture than the screen can show (a 4K file on a 1080p TV).
-        android.util.DisplayMetrics screen = getResources().getDisplayMetrics();
-        int longSide = Math.max(screen.widthPixels, screen.heightPixels);
-        int shortSide = Math.min(screen.widthPixels, screen.heightPixels);
-        androidx.media3.exoplayer.trackselection.DefaultTrackSelector selector =
-            new androidx.media3.exoplayer.trackselection.DefaultTrackSelector(this);
-        selector.setParameters(selector.buildUponParameters().setMaxVideoSize(longSide, shortSide));
         player = new ExoPlayer.Builder(this, renderers)
-            .setLoadControl(loadControl)
-            .setTrackSelector(selector)
             .setMediaSourceFactory(new DefaultMediaSourceFactory(this, extractors).setDataSourceFactory(http))
             .build();
         player.addListener(new Player.Listener() {
@@ -208,8 +194,6 @@ public class NativePlayerActivity extends android.app.Activity {
             }
         });
         view.setPlayer(player);
-        // Seeks land on the nearest keyframe: quicker than decoding up to the exact frame.
-        player.setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC);
         player.setMediaItem(MediaItem.fromUri(Uri.parse(url)));
         if (positionMs > 0) player.seekTo(positionMs);
         player.setPlayWhenReady(true);
