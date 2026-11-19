@@ -20,6 +20,8 @@ export interface WorkspaceCategoryViewItem {
     readonly category_id?: string | number;
     readonly category_name?: string;
     readonly count?: number;
+    /** A navigation entry the app adds (back, other categories): no count badge. */
+    readonly hideCount?: boolean;
     readonly id?: string | number;
     /**
      * Translation key of an entry the app adds itself (a provider's "All"
@@ -167,6 +169,9 @@ export class WorkspaceContextCategoryViewComponent {
     }
 
     hasItemCount(item: WorkspaceCategoryViewItem): boolean {
+        if (item.hideCount) {
+            return false;
+        }
         if (!this.omitMissingCounts()) {
             return true;
         }

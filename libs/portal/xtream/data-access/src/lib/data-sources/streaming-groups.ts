@@ -18,6 +18,9 @@ export const STREAMING_CATEGORY_ID_BASE = 990_000;
  * titles, with the id `GENRE_ID_BASE + serviceIndex * GENRE_ID_STRIDE + providerCategoryId`.
  * Numeric ids ride the existing routing, selection and filtering unchanged.
  */
+/** Entries the category list adds for navigating: back to the platforms, and the provider's other categories. */
+export const STREAMING_BACK_ID = 989_998;
+export const STREAMING_OTHER_ID = 989_999;
 export const STREAMING_GENRE_ID_BASE = 1_000_000_000;
 export const STREAMING_GENRE_ID_STRIDE = 1_000_000;
 

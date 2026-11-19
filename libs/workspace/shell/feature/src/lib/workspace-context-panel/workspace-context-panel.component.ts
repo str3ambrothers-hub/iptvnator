@@ -31,6 +31,8 @@ import {
     sortPortalCategoryItems,
 } from '@iptvnator/portal/shared/util';
 import {
+    STREAMING_BACK_ID,
+    STREAMING_OTHER_ID,
     streamingGroups,
     XtreamStore,
 } from '@iptvnator/portal/xtream/data-access';
@@ -403,6 +405,9 @@ export class WorkspaceContextPanelComponent {
             (this.isStalkerCategories() && this.isStalkerCategoryLoading())
     );
 
+    /** Top level of the category list: reveals the provider's own categories under the platforms. */
+    readonly showOtherCategories = signal(false);
+
     readonly filteredXtreamCategories = computed(() => {
         this.languageTick();
         const cats = this.xtreamCategories();
@@ -420,8 +425,9 @@ export class WorkspaceContextPanelComponent {
             (category) => this.isAllCategory(category)
         );
 
-        // Streaming services (Netflix, ...) stay first whatever the sort, and the selected
-        // one opens a list of genres right below it.
+        // Streaming services (Netflix, ...) lead the list whatever the sort. At the top level
+        // only they (and "All items") show, with an entry that reveals the provider's own
+        // categories; inside a service only its genres show, with an entry back.
         const idOf = (category: object): number => {
             const row = category as { category_id?: unknown; id?: unknown };
             return Number(row.category_id ?? row.id);
@@ -430,32 +436,46 @@ export class WorkspaceContextPanelComponent {
             streamingGroups.isStreamingCategory(idOf(category));
         const services = sorted.filter(isService);
         if (!services.length) return sorted;
-        const others = sorted.filter((category) => !isService(category));
-        const selectedServiceId = streamingGroups.serviceIdOf(
-            this.xtreamSelectedCategoryId()
-        );
-        const genres =
-            selectedServiceId === null || term
-                ? []
-                : streamingGroups.genreCategories(
-                      this.xtreamSelectedCategoryId(),
-                      this.xtreamCategoryItemCounts(),
-                      cats as unknown as {
-                          category_id: string;
-                          category_name: string;
-                      }[]
-                  );
-        const result: unknown[] = [];
-        for (const service of services) {
-            result.push(service);
-            if (
-                genres.length &&
-                idOf(service) === selectedServiceId
-            ) {
-                result.push(...genres);
-            }
+        const rest = sorted.filter((category) => !isService(category));
+        const selectedId = this.xtreamSelectedCategoryId();
+        const selectedServiceId = streamingGroups.serviceIdOf(selectedId);
+        const entry = (id: number, label: string) =>
+            ({
+                category_id: String(id),
+                category_name: label,
+                parent_id: 0,
+                hideCount: true,
+            }) as unknown;
+
+        if (selectedServiceId !== null && !term) {
+            const service = services.find((c) => idOf(c) === selectedServiceId);
+            const genres = streamingGroups.genreCategories(
+                selectedId,
+                this.xtreamCategoryItemCounts(),
+                cats as unknown as { category_id: string; category_name: string }[]
+            );
+            return [
+                entry(STREAMING_BACK_ID, '‹ All platforms'),
+                ...(service ? [service] : []),
+                ...genres,
+            ] as unknown as typeof sorted;
         }
-        return [...result, ...others] as unknown as typeof sorted;
+
+        const showOthers =
+            this.showOtherCategories() ||
+            !!term ||
+            (selectedId !== null && selectedServiceId === null);
+        const all = rest.filter((category) => this.isAllCategory(category));
+        const others = rest.filter((category) => !this.isAllCategory(category));
+        return [
+            ...all,
+            ...services,
+            entry(
+                STREAMING_OTHER_ID,
+                showOthers ? '‹ Hide other categories' : 'Other categories ›'
+            ),
+            ...(showOthers ? others : []),
+        ] as unknown as typeof sorted;
     });
 
     readonly filteredStalkerCategories = computed(() => {
@@ -727,6 +747,21 @@ export class WorkspaceContextPanelComponent {
             return;
         }
         const categoryId = numericCategoryId;
+        if (categoryId === STREAMING_OTHER_ID) {
+            this.showOtherCategories.update((open) => !open);
+            return;
+        }
+        if (categoryId === STREAMING_BACK_ID) {
+            clearCategoryScope({
+                router: this.router,
+                provider: 'xtreams',
+                store: this.xtreamStore,
+                playlistId: context.playlistId,
+                section,
+                searchQuery: this.searchSync.searchQuery(),
+            });
+            return;
+        }
         this.contextDrawer?.close();
         this.categorySelected.emit();
 
