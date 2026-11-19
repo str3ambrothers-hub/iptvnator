@@ -117,16 +117,19 @@ async function main() {
     const thisYear = new Date().getFullYear() + 1;
     const out = [];
     for (const service of SERVICES) {
-        const known = names.get(service.id);
-        if (!known) {
-            console.log(`skip ${service.name}: provider ${service.id} is not offered in ${region}`);
+        // TMDB's ids differ by region (Prime Video is 9 in the US and 119 in Canada): find the
+        // service by its name in this region's list, then by the usual id.
+        let providerId = [...names].find(([, name]) => service.match.test(name))?.[0];
+        if (providerId === undefined && names.has(service.id)) providerId = service.id;
+        if (providerId === undefined) {
+            console.log(`skip ${service.name}: not offered in ${region}`);
             continue;
         }
-        if (!service.match.test(known)) console.log(`note: ${service.name} (id ${service.id}) is called "${known}" by TMDB`);
+        console.log(`${service.name}: TMDB provider ${providerId} ("${names.get(providerId)}")`);
         const movie = new Set();
         const tv = new Set();
-        await collect('movie', service.id, 1900, thisYear, movie);
-        await collect('tv', service.id, 1900, thisYear, tv);
+        await collect('movie', providerId, 1900, thisYear, movie);
+        await collect('tv', providerId, 1900, thisYear, tv);
         out.push({ name: service.name, movie: [...movie].sort((a, b) => a - b), tv: [...tv].sort((a, b) => a - b) });
         console.log(`${service.name}: ${movie.size} movies, ${tv.size} series`);
     }
