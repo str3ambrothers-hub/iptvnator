@@ -104,7 +104,7 @@ jobs:
           pnpm nx build web --configuration=pwa --skip-nx-cache
           test -f dist/apps/web/index.html
 
-      # Which titles Netflix, Disney+ and the other services carry in Canada, as TMDB ids
+      # Which titles Netflix, Disney+ and the other services carry in Canada and the US, as TMDB ids
       # the app matches against the provider's library. Never fails the build: without the
       # TMDB_API_KEY secret, or when TMDB is unreachable, the app has no Streaming categories.
       - name: Download the streaming-service lists
@@ -113,7 +113,7 @@ jobs:
         timeout-minutes: 20
         env:
           TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-        run: node "$SHELL_DIR/scripts/fetch-streaming-lists.mjs" dist/apps/web CA
+        run: node "$SHELL_DIR/scripts/fetch-streaming-lists.mjs" dist/apps/web CA,US
 
       - name: Bundle the PWA into the shell
         shell: bash

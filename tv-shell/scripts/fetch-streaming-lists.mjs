@@ -14,7 +14,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const outDir = process.argv[2];
-const region = (process.argv[3] || process.env.TMDB_REGION || 'CA').toUpperCase();
+const regions = (process.argv[3] || process.env.TMDB_REGION || 'CA').toUpperCase().split(',').map((r) => r.trim()).filter(Boolean);
+const region = regions.join('+');
 const key = process.env.TMDB_API_KEY;
 const base = process.env.TMDB_BASE || 'https://api.themoviedb.org/3';
 if (!outDir) {
@@ -24,12 +25,14 @@ if (!outDir) {
 
 // TMDB watch-provider ids; names are checked against TMDB's list for the region.
 const SERVICES = [
-    { name: 'Netflix', id: 8, match: /^netflix$/i },
-    { name: 'Disney+', id: 337, match: /^disney\s*(plus|\+)$/i },
-    { name: 'Prime Video', id: 9, match: /^amazon prime video$/i },
-    { name: 'Apple TV+', id: 350, match: /^apple tv(\s*(plus|\+))?$/i },
-    { name: 'Crave (HBO)', id: 230, match: /^crave$/i },
-    { name: 'Paramount+', id: 531, match: /^paramount\s*(plus|\+)$/i },
+    { name: 'Netflix', match: [/^netflix$/i] },
+    { name: 'Disney+', match: [/^disney\s*(plus|\+)$/i] },
+    { name: 'Prime Video', match: [/^amazon prime video$/i] },
+    { name: 'Apple TV+', match: [/^apple tv(\s*(plus|\+))?$/i] },
+    { name: 'Max / Crave (HBO)', match: [/^(hbo )?max$/i, /^crave$/i] },
+    { name: 'Paramount+', match: [/^paramount\s*(plus|\+)$/i] },
+    { name: 'Hulu', match: [/^hulu$/i] },
+    { name: 'Peacock', match: [/^peacock(\s*premium)?$/i] },
 ];
 const MAX_PAGES = 500; // TMDB serves at most 500 pages per query
 const CONCURRENCY = 6;
@@ -73,11 +76,11 @@ async function pool(tasks) {
 }
 
 /** Every id of one query; a range that hits the 500-page cap is split in two by year. */
-async function collect(kind, providerId, from, to, ids) {
+async function collect(kind, providerId, regionCode, from, to, ids) {
     const dateField = kind === 'movie' ? 'primary_release_date' : 'first_air_date';
     const params = (page) => ({
         with_watch_providers: providerId,
-        watch_region: region,
+        watch_region: regionCode,
         with_watch_monetization_types: 'flatrate',
         'vote_count.gte': 0,
         sort_by: kind === 'movie' ? 'primary_release_date.asc' : 'first_air_date.asc',
@@ -88,8 +91,8 @@ async function collect(kind, providerId, from, to, ids) {
     const first = await api(`/discover/${kind}`, params(1));
     if (first.total_pages >= MAX_PAGES && from < to) {
         const mid = Math.floor((from + to) / 2);
-        await collect(kind, providerId, from, mid, ids);
-        await collect(kind, providerId, mid + 1, to, ids);
+        await collect(kind, providerId, regionCode, from, mid, ids);
+        await collect(kind, providerId, regionCode, mid + 1, to, ids);
         return;
     }
     for (const r of first.results || []) ids.add(r.id);
@@ -109,27 +112,34 @@ async function main() {
         write([], 'no TMDB_API_KEY');
         return;
     }
-    const names = new Map();
-    for (const kind of ['movie', 'tv']) {
-        const list = await api(`/watch/providers/${kind}`, { watch_region: region });
-        for (const p of list.results || []) names.set(p.provider_id, p.provider_name);
+    const namesByRegion = new Map();
+    for (const code of regions) {
+        const names = new Map();
+        for (const kind of ['movie', 'tv']) {
+            const list = await api(`/watch/providers/${kind}`, { watch_region: code });
+            for (const p of list.results || []) names.set(p.provider_id, p.provider_name);
+        }
+        namesByRegion.set(code, names);
     }
     const thisYear = new Date().getFullYear() + 1;
     const out = [];
     for (const service of SERVICES) {
+        const movie = new Set();
+        const tv = new Set();
         // TMDB's ids differ by region (Prime Video is 9 in the US and 119 in Canada): find the
-        // service by its name in this region's list, then by the usual id.
-        let providerId = [...names].find(([, name]) => service.match.test(name))?.[0];
-        if (providerId === undefined && names.has(service.id)) providerId = service.id;
-        if (providerId === undefined) {
+        // service by its name in each region's list and gather the titles of every region.
+        for (const code of regions) {
+            const ids = [...namesByRegion.get(code)].filter(([, name]) => service.match.some((re) => re.test(name))).map(([id]) => id);
+            for (const providerId of ids) {
+                console.log(`${service.name} in ${code}: TMDB provider ${providerId} ("${namesByRegion.get(code).get(providerId)}")`);
+                await collect('movie', providerId, code, 1900, thisYear, movie);
+                await collect('tv', providerId, code, 1900, thisYear, tv);
+            }
+        }
+        if (!movie.size && !tv.size) {
             console.log(`skip ${service.name}: not offered in ${region}`);
             continue;
         }
-        console.log(`${service.name}: TMDB provider ${providerId} ("${names.get(providerId)}")`);
-        const movie = new Set();
-        const tv = new Set();
-        await collect('movie', providerId, 1900, thisYear, movie);
-        await collect('tv', providerId, 1900, thisYear, tv);
         out.push({ name: service.name, movie: [...movie].sort((a, b) => a - b), tv: [...tv].sort((a, b) => a - b) });
         console.log(`${service.name}: ${movie.size} movies, ${tv.size} series`);
     }
