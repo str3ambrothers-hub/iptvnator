@@ -1067,7 +1067,52 @@
         var heap = mem ? Math.round(mem.usedJSHeapSize / 1048576) + ' MB' : 'n/a';
         return 'FPS ' + diag.fps + '   worst frame ' + Math.round(diag.worst) + ' ms\n' +
             'JS heap ' + heap + '   DOM nodes ' + document.getElementsByTagName('*').length + '\n' +
+            (diag.ids ? diag.ids + '\n' : '') +
             'Menu x5 closes';
+    }
+    /** Counts, in the saved catalogue, the titles that carry a TMDB / IMDb id (to judge streaming-service grouping). */
+    function scanCatalogueIds() {
+        diag.ids = 'IDs: scanning saved catalogue...';
+        try {
+            var open = indexedDB.open('iptvnator-catalogue');
+            open.onerror = function () { diag.ids = 'IDs: no saved catalogue yet'; };
+            open.onsuccess = function () {
+                var db = open.result;
+                if (!db.objectStoreNames.contains('catalogues')) { diag.ids = 'IDs: no saved catalogue yet'; return; }
+                var store = db.transaction('catalogues', 'readonly').objectStore('catalogues');
+                var keysReq = store.getAllKeys();
+                keysReq.onsuccess = function () {
+                    var lines = [];
+                    var pending = 0;
+                    var keys = keysReq.result.filter(function (k) { return /-(movie|series)-content$/.test(String(k)); });
+                    if (!keys.length) { diag.ids = 'IDs: no movie/series catalogue saved yet'; return; }
+                    keys.forEach(function (key) {
+                        pending++;
+                        var get = db.transaction('catalogues', 'readonly').objectStore('catalogues').get(key);
+                        get.onsuccess = function () {
+                            var items = (get.result && get.result.items) || [];
+                            var withId = 0, withTmdb = 0;
+                            for (var i = 0; i < items.length; i++) {
+                                var it = items[i] || {};
+                                var t = it.tmdb || it.tmdb_id;
+                                if (t && String(t) !== '0') { withTmdb++; withId++; }
+                                else if (it.imdb_id || it.imdb) withId++;
+                            }
+                            var kind = /-series-content$/.test(String(key)) ? 'series' : 'movies';
+                            var tagged = 0;
+                            for (var j = 0; j < items.length; j++) {
+                                if (/^\s*[\[(]?[A-Za-z0-9+]{2,8}[\])]?\s*[|:\-]\s*\S/.test(String((items[j] || {}).name || ''))) tagged++;
+                            }
+                            var fields = items[0] ? Object.keys(items[0]).join(',') : '';
+                            lines.push(kind + ' ' + items.length + ': tmdb ' + withTmdb + ', any id ' + withId + ', tagged titles ' + tagged + '\n  fields: ' + fields + '\n  e.g. ' + String((items[0] || {}).name || '').slice(0, 40));
+                            if (--pending === 0) diag.ids = 'IDs\n' + lines.join('\n');
+                        };
+                        get.onerror = function () { if (--pending === 0) diag.ids = 'IDs: ' + (lines.join(' | ') || 'read failed'); };
+                    });
+                };
+                keysReq.onerror = function () { diag.ids = 'IDs: read failed'; };
+            };
+        } catch (e) { diag.ids = 'IDs: unavailable'; }
     }
     function diagFrame(now) {
         if (!diag.el) return;
@@ -1095,7 +1140,8 @@
         diag.el.setAttribute('data-tvshell-diag', '');
         diag.el.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;margin:0;padding:10px 14px;' +
             'background:rgba(0,0,0,.8);color:#9f9;font:14px/1.4 monospace;pointer-events:none;border-radius:6px';
-        diag.frames = 0; diag.since = 0; diag.worst = 0; diag.lastFrame = 0; diag.ticks = 0;
+        diag.frames = 0; diag.since = 0; diag.worst = 0; diag.lastFrame = 0; diag.ticks = 0; diag.ids = '';
+        scanCatalogueIds();
         diag.el.textContent = diagText();
         document.body.appendChild(diag.el);
         diag.raf = requestAnimationFrame(function (now) { diag.since = now; diagFrame(now); });
