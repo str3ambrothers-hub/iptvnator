@@ -445,17 +445,17 @@ export class WorkspaceContextPanelComponent {
                           category_name: string;
                       }[]
                   );
-        const result: typeof sorted = [];
+        const result: unknown[] = [];
         for (const service of services) {
             result.push(service);
             if (
                 genres.length &&
                 idOf(service) === selectedServiceId
             ) {
-                result.push(...(genres as unknown as typeof sorted));
+                result.push(...genres);
             }
         }
-        return [...result, ...others];
+        return [...result, ...others] as unknown as typeof sorted;
     });
 
     readonly filteredStalkerCategories = computed(() => {

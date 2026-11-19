@@ -255,7 +255,10 @@ export function withSelection() {
                             ? streamingGroups.labelOf(
                                   selectedType,
                                   categoryId,
-                                  allCategories
+                                  allCategories as unknown as {
+                                      category_id: string;
+                                      category_name: string;
+                                  }[]
                               )
                             : null;
                     if (streamingLabel) {
