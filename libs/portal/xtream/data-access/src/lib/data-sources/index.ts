@@ -14,6 +14,7 @@ import {
 export * from './xtream-data-source.interface';
 export { ElectronXtreamDataSource } from './electron-xtream-data-source';
 export { PwaXtreamDataSource } from './pwa-xtream-data-source';
+export { streamingGroups } from './streaming-groups';
 
 /**
  * Factory function that returns the appropriate data source based on environment.

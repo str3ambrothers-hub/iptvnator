@@ -30,7 +30,10 @@ import {
     PortalCategorySortStateService,
     sortPortalCategoryItems,
 } from '@iptvnator/portal/shared/util';
-import { XtreamStore } from '@iptvnator/portal/xtream/data-access';
+import {
+    streamingGroups,
+    XtreamStore,
+} from '@iptvnator/portal/xtream/data-access';
 import {
     ParentalLockService,
     injectTranslationTick,
@@ -410,12 +413,49 @@ export class WorkspaceContextPanelComponent {
               )
             : cats;
 
-        return sortPortalCategoryItems(
+        const sorted = sortPortalCategoryItems(
             filtered,
             this.categorySortMode(),
             (category) => this.getCategoryLabel(category),
             (category) => this.isAllCategory(category)
         );
+
+        // Streaming services (Netflix, ...) stay first whatever the sort, and the selected
+        // one opens a list of genres right below it.
+        const idOf = (category: object): number => {
+            const row = category as { category_id?: unknown; id?: unknown };
+            return Number(row.category_id ?? row.id);
+        };
+        const isService = (category: object): boolean =>
+            streamingGroups.isStreamingCategory(idOf(category));
+        const services = sorted.filter(isService);
+        if (!services.length) return sorted;
+        const others = sorted.filter((category) => !isService(category));
+        const selectedServiceId = streamingGroups.serviceIdOf(
+            this.xtreamSelectedCategoryId()
+        );
+        const genres =
+            selectedServiceId === null || term
+                ? []
+                : streamingGroups.genreCategories(
+                      this.xtreamSelectedCategoryId(),
+                      this.xtreamCategoryItemCounts(),
+                      cats as unknown as {
+                          category_id: string;
+                          category_name: string;
+                      }[]
+                  );
+        const result: typeof sorted = [];
+        for (const service of services) {
+            result.push(service);
+            if (
+                genres.length &&
+                idOf(service) === selectedServiceId
+            ) {
+                result.push(...(genres as unknown as typeof sorted));
+            }
+        }
+        return [...result, ...others];
     });
 
     readonly filteredStalkerCategories = computed(() => {

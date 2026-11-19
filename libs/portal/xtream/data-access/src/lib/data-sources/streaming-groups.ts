@@ -13,6 +13,13 @@ export const STREAMING_SHELL_CLASS = 'tv-shell';
 export const STREAMING_KILL_SWITCH_KEY = 'streaming-groups';
 /** Service categories get ids from here up, far above any provider's. */
 export const STREAMING_CATEGORY_ID_BASE = 990_000;
+/**
+ * A service's genre list: one entry per provider category that holds some of its
+ * titles, with the id `GENRE_ID_BASE + serviceIndex * GENRE_ID_STRIDE + providerCategoryId`.
+ * Numeric ids ride the existing routing, selection and filtering unchanged.
+ */
+export const STREAMING_GENRE_ID_BASE = 1_000_000_000;
+export const STREAMING_GENRE_ID_STRIDE = 1_000_000;
 
 export interface StreamingServiceFile {
     readonly region?: string;
@@ -98,15 +105,49 @@ export class StreamingGroups {
         return categoryId >= STREAMING_CATEGORY_ID_BASE;
     }
 
-    /** True when `item` belongs to the service category `categoryId` for `type`. */
-    includes(type: StreamingContentType, categoryId: number, item: unknown): boolean {
-        const group = this.groups[type].find((g) => g.id === categoryId);
-        if (!group) return false;
-        const id = tmdbIdOf(item);
-        return id !== null && group.members.has(id);
+    /** The service entry id a selection belongs to (a service or one of its genres), or null. */
+    serviceIdOf(categoryId: number | null | undefined): number | null {
+        if (categoryId === null || categoryId === undefined) return null;
+        if (categoryId >= STREAMING_GENRE_ID_BASE) {
+            const index = Math.floor(
+                (categoryId - STREAMING_GENRE_ID_BASE) / STREAMING_GENRE_ID_STRIDE
+            );
+            return STREAMING_CATEGORY_ID_BASE + index;
+        }
+        return categoryId >= STREAMING_CATEGORY_ID_BASE ? categoryId : null;
     }
 
-    /** Adds each service's item count to `counts` (keyed by category id). */
+    /** The provider category inside a genre-list id, or null for any other id. */
+    providerCategoryOf(categoryId: number): number | null {
+        return categoryId >= STREAMING_GENRE_ID_BASE
+            ? (categoryId - STREAMING_GENRE_ID_BASE) % STREAMING_GENRE_ID_STRIDE
+            : null;
+    }
+
+    private genreId(serviceId: number, providerCategory: number): number {
+        return (
+            STREAMING_GENRE_ID_BASE +
+            (serviceId - STREAMING_CATEGORY_ID_BASE) * STREAMING_GENRE_ID_STRIDE +
+            providerCategory
+        );
+    }
+
+    /** True when `item` belongs to the service (or service genre) category `categoryId` for `type`. */
+    includes(type: StreamingContentType, categoryId: number, item: unknown): boolean {
+        const serviceId = this.serviceIdOf(categoryId);
+        if (serviceId === null) return false;
+        const group = this.groups[type].find((g) => g.id === serviceId);
+        if (!group) return false;
+        const id = tmdbIdOf(item);
+        if (id === null || !group.members.has(id)) return false;
+        const providerCategory = this.providerCategoryOf(categoryId);
+        return (
+            providerCategory === null ||
+            Number((item as { category_id?: unknown }).category_id) === providerCategory
+        );
+    }
+
+    /** Adds each service's, and each service genre's, item count to `counts`. */
     addCounts(
         type: StreamingContentType,
         items: readonly unknown[],
@@ -117,12 +158,71 @@ export class StreamingGroups {
         for (const item of items) {
             const id = tmdbIdOf(item);
             if (id === null) continue;
+            const providerCategory = Number(
+                (item as { category_id?: unknown }).category_id
+            );
             for (const group of groups) {
-                if (group.members.has(id)) {
-                    counts.set(group.id, (counts.get(group.id) ?? 0) + 1);
+                if (!group.members.has(id)) continue;
+                counts.set(group.id, (counts.get(group.id) ?? 0) + 1);
+                if (
+                    Number.isInteger(providerCategory) &&
+                    providerCategory >= 0 &&
+                    providerCategory < STREAMING_GENRE_ID_STRIDE
+                ) {
+                    const genre = this.genreId(group.id, providerCategory);
+                    counts.set(genre, (counts.get(genre) ?? 0) + 1);
                 }
             }
         }
+    }
+
+    /**
+     * The genre entries to show under the selected service: the provider's categories
+     * that hold at least one of its titles, in `providerCategories` order.
+     */
+    genreCategories(
+        selectedCategoryId: number | null | undefined,
+        counts: ReadonlyMap<number, number>,
+        providerCategories: readonly { category_id: string; category_name: string }[]
+    ) {
+        const serviceId = this.serviceIdOf(selectedCategoryId);
+        if (serviceId === null) return [];
+        const result: { category_id: string; category_name: string; parent_id: number }[] = [];
+        for (const category of providerCategories) {
+            const providerId = Number(category.category_id);
+            if (
+                !Number.isInteger(providerId) ||
+                providerId < 0 ||
+                providerId >= STREAMING_GENRE_ID_STRIDE ||
+                this.isStreamingCategory(providerId)
+            ) {
+                continue;
+            }
+            const id = this.genreId(serviceId, providerId);
+            if ((counts.get(id) ?? 0) > 0) {
+                result.push({
+                    category_id: String(id),
+                    category_name: `› ${category.category_name}`,
+                    parent_id: serviceId,
+                });
+            }
+        }
+        return result;
+    }
+
+    /** "Netflix: Action" for a service or genre-list id, for titles and search labels. */
+    labelOf(
+        type: StreamingContentType,
+        categoryId: number,
+        providerCategories: readonly { category_id: string; category_name: string }[]
+    ): string | null {
+        const serviceId = this.serviceIdOf(categoryId);
+        const group = serviceId === null ? undefined : this.groups[type].find((g) => g.id === serviceId);
+        if (!group) return null;
+        const providerId = this.providerCategoryOf(categoryId);
+        if (providerId === null) return group.name;
+        const provider = providerCategories.find((c) => Number(c.category_id) === providerId);
+        return provider ? `${group.name}: ${provider.category_name}` : group.name;
     }
 }
 

@@ -31,7 +31,10 @@ import {
     filterByMinRating,
     buildCountMap,
 } from './with-selection-content.util';
-import { streamingGroups } from '../../data-sources/streaming-groups';
+import {
+    STREAMING_GENRE_ID_BASE,
+    streamingGroups,
+} from '../../data-sources/streaming-groups';
 export {
     CATALOG_INITIAL_WINDOW,
     CATALOG_WINDOW_CHUNK,
@@ -244,6 +247,26 @@ export function withSelection() {
                         ...(storeAny.liveCategories?.() || []),
                         ...(storeAny.serialCategories?.() || []),
                     ];
+
+                    const selectedType = store.selectedContentType();
+                    const streamingLabel =
+                        categoryId >= STREAMING_GENRE_ID_BASE &&
+                        (selectedType === 'vod' || selectedType === 'series')
+                            ? streamingGroups.labelOf(
+                                  selectedType,
+                                  categoryId,
+                                  allCategories
+                              )
+                            : null;
+                    if (streamingLabel) {
+                        return {
+                            id: categoryId,
+                            category_id: String(categoryId),
+                            category_name: streamingLabel,
+                            name: streamingLabel,
+                            type: selectedType,
+                        } as unknown as (typeof allCategories)[number];
+                    }
 
                     return allCategories.find(
                         (c) =>
