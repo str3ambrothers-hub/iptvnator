@@ -31,6 +31,7 @@ import {
     filterByMinRating,
     buildCountMap,
 } from './with-selection-content.util';
+import { streamingGroups } from '../../data-sources/streaming-groups';
 export {
     CATALOG_INITIAL_WINDOW,
     CATALOG_WINDOW_CHUNK,
@@ -129,16 +130,20 @@ export function withSelection() {
                     (store as ParentSelectionStoreLike).liveStreams?.() || []
                 )
             );
-            const vodItemCounts = computed(() =>
-                buildCountMap(
-                    (store as ParentSelectionStoreLike).vodStreams?.() || []
-                )
-            );
-            const seriesItemCounts = computed(() =>
-                buildCountMap(
-                    (store as ParentSelectionStoreLike).serialStreams?.() || []
-                )
-            );
+            const vodItemCounts = computed(() => {
+                const items =
+                    (store as ParentSelectionStoreLike).vodStreams?.() || [];
+                const counts = buildCountMap(items);
+                streamingGroups.addCounts('vod', items, counts);
+                return counts;
+            });
+            const seriesItemCounts = computed(() => {
+                const items =
+                    (store as ParentSelectionStoreLike).serialStreams?.() || [];
+                const counts = buildCountMap(items);
+                streamingGroups.addCounts('series', items, counts);
+                return counts;
+            });
             const selectedTypeContentState = computed(() => {
                 const storeAny = store as ParentSelectionStoreLike;
                 const selectedType = store.selectedContentType();
@@ -172,7 +177,13 @@ export function withSelection() {
                     const minRating = store.minRating();
                     let filtered = categoryId
                         ? getVisibleContentForType(categoryType).filter(
-                              (item) => Number(item.category_id) === categoryId
+                              (item) =>
+                                  Number(item.category_id) === categoryId ||
+                                  streamingGroups.includes(
+                                      categoryType,
+                                      categoryId,
+                                      item
+                                  )
                           )
                         : sortedContent();
 

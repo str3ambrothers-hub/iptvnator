@@ -2,6 +2,10 @@
     <header class="settings-group__header">
         <h2>{{ 'SETTINGS.ABOUT' | translate }}</h2>
         <p>{{ 'SETTINGS.ABOUT_SUBTITLE' | translate }}</p>
+        <p>
+            Streaming-service lists use the TMDB API. This product is not
+            endorsed or certified by TMDB.
+        </p>
     </header>
 
     <!-- Version, update state and channel in one block. -->
@@ -15,7 +19,7 @@
                 />
                 <div class="settings-hero__text">
                     <div class="settings-hero__title">
-                        <span>IPTVnator</span>
+                        <span>StreamBros</span>
                         @if (updateStatusChip(); as chip) {
                             <span
                                 class="settings-chip"

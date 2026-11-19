@@ -27,6 +27,11 @@ import {
 } from '@iptvnator/services';
 import { firstValueFrom } from 'rxjs';
 import {
+    fetchStreamingFile,
+    isStreamingGroupsEnabled,
+    streamingGroups,
+} from './streaming-groups';
+import {
     DbCategoryType,
     XTREAM_CONTENT_TYPES,
     IXtreamDataSource,
@@ -358,6 +363,25 @@ export class PwaXtreamDataSource implements IXtreamDataSource {
     }
 
     async getCategories(
+        playlistId: string,
+        credentials: XtreamCredentials,
+        type: CategoryType,
+        options?: XtreamOperationOptions
+    ): Promise<XtreamCategory[]> {
+        const categories = await this.getProviderCategories(
+            playlistId,
+            credentials,
+            type,
+            options
+        );
+        if (type !== 'vod' && type !== 'series') return categories;
+        if (!isStreamingGroupsEnabled(this.document)) return categories;
+        await streamingGroups.load(() => fetchStreamingFile(this.document));
+        const extra = streamingGroups.categories(type);
+        return extra.length ? [...extra, ...categories] : categories;
+    }
+
+    private async getProviderCategories(
         playlistId: string,
         credentials: XtreamCredentials,
         type: CategoryType,
