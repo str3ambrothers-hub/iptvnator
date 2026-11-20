@@ -451,8 +451,7 @@ export class WorkspaceContextPanelComponent {
             const service = services.find((c) => idOf(c) === selectedServiceId);
             const genres = streamingGroups.genreCategories(
                 selectedId,
-                this.xtreamCategoryItemCounts(),
-                cats as unknown as { category_id: string; category_name: string }[]
+                this.xtreamCategoryItemCounts()
             );
             return [
                 entry(STREAMING_BACK_ID, '‹ All platforms'),

@@ -252,14 +252,7 @@ export function withSelection() {
                     const streamingLabel =
                         categoryId >= STREAMING_GENRE_ID_BASE &&
                         (selectedType === 'vod' || selectedType === 'series')
-                            ? streamingGroups.labelOf(
-                                  selectedType,
-                                  categoryId,
-                                  allCategories as unknown as {
-                                      category_id: string;
-                                      category_name: string;
-                                  }[]
-                              )
+                            ? streamingGroups.labelOf(selectedType, categoryId)
                             : null;
                     if (streamingLabel) {
                         return {

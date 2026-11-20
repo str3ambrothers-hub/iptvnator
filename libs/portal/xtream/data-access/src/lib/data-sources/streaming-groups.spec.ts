@@ -7,10 +7,21 @@ import {
     tmdbIdOf,
 } from './streaming-groups';
 
+const SPAN = 2 ** 21;
+const ACTION = 0;
+const ANIMATION = 2;
+const ANIME = 3;
+const COMEDY = 4;
+const KIDS = 20;
+/** A title as the build stores it: tmdb id and its genre bits. */
+const code = (id: number, ...bits: number[]) =>
+    id * SPAN + bits.reduce((mask, bit) => mask | (1 << bit), 0);
+
 const file = {
+    format: 2,
     services: [
-        { name: 'Netflix', movie: [10, 11], tv: [100] },
-        { name: 'Disney+', movie: [11, 12], tv: [] },
+        { name: 'Netflix', movie: [code(10, ACTION), code(11, COMEDY, KIDS)], tv: [code(100, ANIME)] },
+        { name: 'Disney+', movie: [code(11, COMEDY, KIDS), code(12, ANIMATION, KIDS)], tv: [] },
     ],
 };
 
@@ -76,69 +87,56 @@ describe('StreamingGroups', () => {
 describe('StreamingGroups genres', () => {
     const NETFLIX = STREAMING_CATEGORY_ID_BASE;
     const DISNEY = STREAMING_CATEGORY_ID_BASE + 1;
-    const genre = (service: number, provider: number) =>
+    const genre = (service: number, bit: number) =>
         STREAMING_GENRE_ID_BASE +
         (service - STREAMING_CATEGORY_ID_BASE) * STREAMING_GENRE_ID_STRIDE +
-        provider;
-    const provider = [
-        { category_id: '5', category_name: 'Action' },
-        { category_id: '6', category_name: 'Comedy' },
-        { category_id: '7', category_name: 'Drama' },
-    ];
-    const items = [
-        { tmdb: '10', category_id: '5' },
-        { tmdb: '11', category_id: '5' },
-        { tmdb: '11', category_id: '6' },
-        { tmdb: '12', category_id: '7' },
-        { tmdb: '99', category_id: '5' },
-    ];
+        bit;
     let groups: StreamingGroups;
     beforeEach(() => {
         groups = new StreamingGroups();
         groups.apply(file);
     });
 
-    it('maps a genre id back to its service and provider category', () => {
-        expect(groups.serviceIdOf(genre(DISNEY, 6))).toBe(DISNEY);
-        expect(groups.providerCategoryOf(genre(DISNEY, 6))).toBe(6);
+    it('maps a genre id back to its service and genre', () => {
+        expect(groups.serviceIdOf(genre(DISNEY, KIDS))).toBe(DISNEY);
+        expect(groups.genreBitOf(genre(DISNEY, KIDS))).toBe(KIDS);
         expect(groups.serviceIdOf(NETFLIX)).toBe(NETFLIX);
         expect(groups.serviceIdOf(5)).toBeNull();
         expect(groups.serviceIdOf(null)).toBeNull();
-        expect(groups.providerCategoryOf(NETFLIX)).toBeNull();
+        expect(groups.genreBitOf(NETFLIX)).toBeNull();
     });
 
-    it('keeps only the service titles that sit in the provider category', () => {
-        expect(groups.includes('vod', genre(NETFLIX, 5), items[0])).toBe(true);
-        expect(groups.includes('vod', genre(NETFLIX, 6), items[0])).toBe(false);
-        expect(groups.includes('vod', genre(NETFLIX, 5), items[4])).toBe(false);
-        expect(groups.includes('vod', genre(DISNEY, 6), items[2])).toBe(true);
+    it('keeps only the service titles that carry the genre', () => {
+        expect(groups.includes('vod', genre(NETFLIX, ACTION), { tmdb: '10' })).toBe(true);
+        expect(groups.includes('vod', genre(NETFLIX, COMEDY), { tmdb: '10' })).toBe(false);
+        expect(groups.includes('vod', genre(NETFLIX, KIDS), { tmdb: '11' })).toBe(true);
+        expect(groups.includes('vod', genre(NETFLIX, KIDS), { tmdb: '99' })).toBe(false);
+        expect(groups.includes('vod', genre(DISNEY, ANIMATION), { tmdb: '12' })).toBe(true);
+        expect(groups.includes('series', genre(NETFLIX, ANIME), { tmdb: '100' })).toBe(true);
+        expect(groups.includes('series', genre(NETFLIX, ANIMATION), { tmdb: '100' })).toBe(false);
     });
 
-    it('counts each service genre, and lists only genres that hold titles', () => {
+    it('counts each service genre and lists only genres that hold titles, Kids first', () => {
         const counts = new Map<number, number>();
-        groups.addCounts('vod', items, counts);
+        groups.addCounts('vod', [{ tmdb: '10' }, { tmdb: '11' }, { tmdb: '99' }, {}], counts);
 
-        expect(counts.get(NETFLIX)).toBe(3);
-        expect(counts.get(genre(NETFLIX, 5))).toBe(2);
-        expect(counts.get(genre(NETFLIX, 6))).toBe(1);
-        expect(counts.get(genre(DISNEY, 7))).toBe(1);
+        expect(counts.get(NETFLIX)).toBe(2);
+        expect(counts.get(genre(NETFLIX, KIDS))).toBe(1);
+        expect(counts.get(genre(NETFLIX, ACTION))).toBe(1);
+        expect(counts.get(genre(DISNEY, KIDS))).toBe(1);
 
         expect(
-            groups.genreCategories(NETFLIX, counts, provider).map((c) => c.category_name)
-        ).toEqual(['› Action', '› Comedy']);
-        expect(
-            groups.genreCategories(genre(NETFLIX, 5), counts, provider).length
-        ).toBe(2);
-        expect(groups.genreCategories(5, counts, provider)).toEqual([]);
-        expect(groups.genreCategories(null, counts, provider)).toEqual([]);
+            groups.genreCategories(NETFLIX, counts).map((c) => c.category_name)
+        ).toEqual(['› Kids', '› Action', '› Comedy']);
+        expect(groups.genreCategories(genre(NETFLIX, ACTION), counts).length).toBe(3);
+        expect(groups.genreCategories(5, counts)).toEqual([]);
+        expect(groups.genreCategories(null, counts)).toEqual([]);
     });
 
     it('labels a service and one of its genres', () => {
-        expect(groups.labelOf('vod', NETFLIX, provider)).toBe('Netflix');
-        expect(groups.labelOf('vod', genre(NETFLIX, 6), provider)).toBe(
-            'Netflix: Comedy'
-        );
-        expect(groups.labelOf('vod', 5, provider)).toBeNull();
+        expect(groups.labelOf('vod', NETFLIX)).toBe('Netflix');
+        expect(groups.labelOf('vod', genre(NETFLIX, COMEDY))).toBe('Netflix: Comedy');
+        expect(groups.labelOf('vod', 5)).toBeNull();
     });
 });
 

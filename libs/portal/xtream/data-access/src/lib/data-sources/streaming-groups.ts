@@ -14,8 +14,8 @@ export const STREAMING_KILL_SWITCH_KEY = 'streaming-groups';
 /** Service categories get ids from here up, far above any provider's. */
 export const STREAMING_CATEGORY_ID_BASE = 990_000;
 /**
- * A service's genre list: one entry per provider category that holds some of its
- * titles, with the id `GENRE_ID_BASE + serviceIndex * GENRE_ID_STRIDE + providerCategoryId`.
+ * A service's genre list: one entry per genre that holds some of its titles, with the id
+ * `GENRE_ID_BASE + serviceIndex * GENRE_ID_STRIDE + genreBit`.
  * Numeric ids ride the existing routing, selection and filtering unchanged.
  */
 /** Entries the category list adds for navigating: back to the platforms, and the provider's other categories. */
@@ -24,7 +24,21 @@ export const STREAMING_OTHER_ID = 989_999;
 export const STREAMING_GENRE_ID_BASE = 1_000_000_000;
 export const STREAMING_GENRE_ID_STRIDE = 1_000_000;
 
+/** The app's genres, in the bit order of the lists the build writes (see fetch-streaming-lists.mjs). */
+export const STREAMING_GENRES = [
+    'Action', 'Adventure', 'Animation', 'Anime', 'Comedy', 'Crime', 'Documentary', 'Drama',
+    'Family', 'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 'Romance', 'Sci-Fi',
+    'Thriller', 'War', 'Western', 'Reality & Talk', 'Kids',
+] as const;
+/** Order the genres are listed in under a service: Kids and animation first. */
+const GENRE_DISPLAY_ORDER: readonly number[] = [
+    20, 2, 3, 0, 1, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+];
+/** A title is stored as `tmdbId * MASK_SPAN + genreMask`. */
+const MASK_SPAN = 2 ** 21;
+
 export interface StreamingServiceFile {
+    readonly format?: number;
     readonly region?: string;
     readonly generatedAt?: string;
     readonly services: readonly {
@@ -39,7 +53,8 @@ export type StreamingContentType = 'vod' | 'series';
 interface StreamingGroup {
     readonly id: number;
     readonly name: string;
-    readonly members: ReadonlySet<number>;
+    /** TMDB id -> genre mask */
+    readonly members: ReadonlyMap<number, number>;
 }
 
 /** The TMDB id of a catalogue row, or null when it has none. */
@@ -77,10 +92,21 @@ export class StreamingGroups {
             vod: [],
             series: [],
         };
+        const decode = (codes: readonly number[] | undefined) => {
+            const members = new Map<number, number>();
+            for (const code of codes ?? []) {
+                if (file?.format === 2) {
+                    members.set(Math.floor(code / MASK_SPAN), code % MASK_SPAN);
+                } else {
+                    members.set(code, 0);
+                }
+            }
+            return members;
+        };
         (file?.services ?? []).forEach((service, index) => {
             const id = STREAMING_CATEGORY_ID_BASE + index;
-            const movies = new Set(service.movie ?? []);
-            const shows = new Set(service.tv ?? []);
+            const movies = decode(service.movie);
+            const shows = decode(service.tv);
             if (movies.size) next.vod.push({ id, name: service.name, members: movies });
             if (shows.size) next.series.push({ id, name: service.name, members: shows });
         });
@@ -120,18 +146,18 @@ export class StreamingGroups {
         return categoryId >= STREAMING_CATEGORY_ID_BASE ? categoryId : null;
     }
 
-    /** The provider category inside a genre-list id, or null for any other id. */
-    providerCategoryOf(categoryId: number): number | null {
+    /** The genre (index into STREAMING_GENRES) inside a genre-list id, or null for any other id. */
+    genreBitOf(categoryId: number): number | null {
         return categoryId >= STREAMING_GENRE_ID_BASE
             ? (categoryId - STREAMING_GENRE_ID_BASE) % STREAMING_GENRE_ID_STRIDE
             : null;
     }
 
-    private genreId(serviceId: number, providerCategory: number): number {
+    private genreId(serviceId: number, genreBit: number): number {
         return (
             STREAMING_GENRE_ID_BASE +
             (serviceId - STREAMING_CATEGORY_ID_BASE) * STREAMING_GENRE_ID_STRIDE +
-            providerCategory
+            genreBit
         );
     }
 
@@ -142,12 +168,10 @@ export class StreamingGroups {
         const group = this.groups[type].find((g) => g.id === serviceId);
         if (!group) return false;
         const id = tmdbIdOf(item);
-        if (id === null || !group.members.has(id)) return false;
-        const providerCategory = this.providerCategoryOf(categoryId);
-        return (
-            providerCategory === null ||
-            Number((item as { category_id?: unknown }).category_id) === providerCategory
-        );
+        const mask = id === null ? undefined : group.members.get(id);
+        if (mask === undefined) return false;
+        const bit = this.genreBitOf(categoryId);
+        return bit === null || (mask & (1 << bit)) !== 0;
     }
 
     /** Adds each service's, and each service genre's, item count to `counts`. */
@@ -161,51 +185,37 @@ export class StreamingGroups {
         for (const item of items) {
             const id = tmdbIdOf(item);
             if (id === null) continue;
-            const providerCategory = Number(
-                (item as { category_id?: unknown }).category_id
-            );
             for (const group of groups) {
-                if (!group.members.has(id)) continue;
+                const mask = group.members.get(id);
+                if (mask === undefined) continue;
                 counts.set(group.id, (counts.get(group.id) ?? 0) + 1);
-                if (
-                    Number.isInteger(providerCategory) &&
-                    providerCategory >= 0 &&
-                    providerCategory < STREAMING_GENRE_ID_STRIDE
-                ) {
-                    const genre = this.genreId(group.id, providerCategory);
-                    counts.set(genre, (counts.get(genre) ?? 0) + 1);
+                for (let bit = 0; bit < STREAMING_GENRES.length; bit++) {
+                    if (mask & (1 << bit)) {
+                        const genre = this.genreId(group.id, bit);
+                        counts.set(genre, (counts.get(genre) ?? 0) + 1);
+                    }
                 }
             }
         }
     }
 
     /**
-     * The genre entries to show under the selected service: the provider's categories
-     * that hold at least one of its titles, in `providerCategories` order.
+     * The genre entries to show under the selected service: the genres (from TMDB, not the
+     * provider's categories) that hold at least one of its titles in the library.
      */
     genreCategories(
         selectedCategoryId: number | null | undefined,
-        counts: ReadonlyMap<number, number>,
-        providerCategories: readonly { category_id: string; category_name: string }[]
+        counts: ReadonlyMap<number, number>
     ) {
         const serviceId = this.serviceIdOf(selectedCategoryId);
         if (serviceId === null) return [];
         const result: { category_id: string; category_name: string; parent_id: number }[] = [];
-        for (const category of providerCategories) {
-            const providerId = Number(category.category_id);
-            if (
-                !Number.isInteger(providerId) ||
-                providerId < 0 ||
-                providerId >= STREAMING_GENRE_ID_STRIDE ||
-                this.isStreamingCategory(providerId)
-            ) {
-                continue;
-            }
-            const id = this.genreId(serviceId, providerId);
+        for (const bit of GENRE_DISPLAY_ORDER) {
+            const id = this.genreId(serviceId, bit);
             if ((counts.get(id) ?? 0) > 0) {
                 result.push({
                     category_id: String(id),
-                    category_name: `› ${category.category_name}`,
+                    category_name: `› ${STREAMING_GENRES[bit]}`,
                     parent_id: serviceId,
                 });
             }
@@ -213,19 +223,15 @@ export class StreamingGroups {
         return result;
     }
 
-    /** "Netflix: Action" for a service or genre-list id, for titles and search labels. */
-    labelOf(
-        type: StreamingContentType,
-        categoryId: number,
-        providerCategories: readonly { category_id: string; category_name: string }[]
-    ): string | null {
+    /** "Netflix: Anime" for a service or genre-list id, for titles and search labels. */
+    labelOf(type: StreamingContentType, categoryId: number): string | null {
         const serviceId = this.serviceIdOf(categoryId);
         const group = serviceId === null ? undefined : this.groups[type].find((g) => g.id === serviceId);
         if (!group) return null;
-        const providerId = this.providerCategoryOf(categoryId);
-        if (providerId === null) return group.name;
-        const provider = providerCategories.find((c) => Number(c.category_id) === providerId);
-        return provider ? `${group.name}: ${provider.category_name}` : group.name;
+        const bit = this.genreBitOf(categoryId);
+        return bit === null || !STREAMING_GENRES[bit]
+            ? group.name
+            : `${group.name}: ${STREAMING_GENRES[bit]}`;
     }
 }
 

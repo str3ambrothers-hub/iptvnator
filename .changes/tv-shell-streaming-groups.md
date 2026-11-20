@@ -8,3 +8,5 @@ Movies and Series in the TV app now start with Streaming categories (Netflix, Di
 Opening a streaming service also lists its genres (the provider's own categories, narrowed to that service's titles) right below it; picking a genre shows those titles.
 
 The category list now shows only "All items" and the streaming services at the top level, with an "Other categories" entry that reveals the provider's own categories. Opening a service shows only its genres, with an entry back to all platforms.
+
+The genre list under each streaming service now uses TMDB's own genres, so a title is only listed where TMDB says it belongs. It adds Kids (TMDB's Kids genre and animated family titles) and separates Anime (animation originally in Japanese) from Animation.

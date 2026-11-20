@@ -37,10 +37,35 @@ const SERVICES = [
 const MAX_PAGES = 500; // TMDB serves at most 500 pages per query
 const CONCURRENCY = 6;
 
+// Each title is stored as one number: tmdbId * 2^21 + a mask of the app's genres. The bit order
+// matches GENRES in the app (streaming-groups.ts): 0 Action, 1 Adventure, 2 Animation, 3 Anime,
+// 4 Comedy, 5 Crime, 6 Documentary, 7 Drama, 8 Family, 9 Fantasy, 10 History, 11 Horror,
+// 12 Music, 13 Mystery, 14 Romance, 15 Sci-Fi, 16 Thriller, 17 War, 18 Western,
+// 19 Reality & Talk, 20 Kids.
+const MASK_SPAN = 2 ** 21;
+const GENRE_BITS = {
+    28: [0], 12: [1], 10759: [0, 1], 35: [4], 80: [5], 99: [6], 18: [7], 10751: [8], 14: [9],
+    10765: [9, 15], 36: [10], 27: [11], 10402: [12], 9648: [13], 10749: [14], 878: [15],
+    53: [16], 10752: [17], 10768: [17, 0], 37: [18], 10764: [19], 10763: [19], 10767: [19],
+};
+
+/** The app's genre mask for one TMDB result (genre ids and original language). */
+function genreMask(result) {
+    const ids = result.genre_ids || [];
+    let mask = 0;
+    for (const id of ids) for (const bit of GENRE_BITS[id] || []) mask |= 1 << bit;
+    if (ids.includes(16)) mask |= result.original_language === 'ja' ? 1 << 3 : 1 << 2;
+    // Kids: TMDB's own Kids genre, or animated family titles that are not horror or crime.
+    if (ids.includes(10762) || (ids.includes(16) && ids.includes(10751) && !ids.includes(27) && !ids.includes(80))) {
+        mask |= 1 << 20;
+    }
+    return mask;
+}
+
 function write(services, note) {
     const dir = join(outDir, 'assets', 'streaming');
     mkdirSync(dir, { recursive: true });
-    const file = { region, generatedAt: new Date().toISOString(), services };
+    const file = { format: 2, region, generatedAt: new Date().toISOString(), services };
     writeFileSync(join(dir, 'streaming.json'), JSON.stringify(file));
     console.log(`streaming.json: ${services.map((s) => `${s.name} ${s.movie.length}/${s.tv.length}`).join(', ') || 'empty'}${note ? ' (' + note + ')' : ''}`);
 }
@@ -95,13 +120,13 @@ async function collect(kind, providerId, regionCode, from, to, ids) {
         await collect(kind, providerId, regionCode, mid + 1, to, ids);
         return;
     }
-    for (const r of first.results || []) ids.add(r.id);
+    for (const r of first.results || []) ids.set(r.id, (ids.get(r.id) || 0) | genreMask(r));
     const pages = Math.min(first.total_pages || 1, MAX_PAGES);
     const tasks = [];
     for (let page = 2; page <= pages; page++) {
         tasks.push(async () => {
             const data = await api(`/discover/${kind}`, params(page));
-            for (const r of data.results || []) ids.add(r.id);
+            for (const r of data.results || []) ids.set(r.id, (ids.get(r.id) || 0) | genreMask(r));
         });
     }
     await pool(tasks);
@@ -124,8 +149,8 @@ async function main() {
     const thisYear = new Date().getFullYear() + 1;
     const out = [];
     for (const service of SERVICES) {
-        const movie = new Set();
-        const tv = new Set();
+        const movie = new Map();
+        const tv = new Map();
         // TMDB's ids differ by region (Prime Video is 9 in the US and 119 in Canada): find the
         // service by its name in each region's list and gather the titles of every region.
         for (const code of regions) {
@@ -140,7 +165,8 @@ async function main() {
             console.log(`skip ${service.name}: not offered in ${region}`);
             continue;
         }
-        out.push({ name: service.name, movie: [...movie].sort((a, b) => a - b), tv: [...tv].sort((a, b) => a - b) });
+        const codes = (map) => [...map].map(([id, mask]) => id * MASK_SPAN + mask).sort((a, b) => a - b);
+        out.push({ name: service.name, movie: codes(movie), tv: codes(tv) });
         console.log(`${service.name}: ${movie.size} movies, ${tv.size} series`);
     }
     write(out);
