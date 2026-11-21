@@ -164,3 +164,8 @@ app-grid-list.live-all-items-grid {
         }
     }
 }
+
+/* TV guide mode: channels play in the built-in player, so the page player in the guide is never shown. */
+.tv-guide-player-hidden {
+    display: none !important;
+}

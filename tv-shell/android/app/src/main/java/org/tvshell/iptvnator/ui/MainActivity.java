@@ -727,7 +727,7 @@ public class MainActivity extends Activity {
         webView.onResume();
         webView.resumeTimers();
         pauseWebForPlayer = false;
-        js("window.__tvNativeClosed && window.__tvNativeClosed()");
+        js("window.__tvNativeClosed && window.__tvNativeClosed(" + NativePlayerActivity.takeZap() + ")");
         js("window.__tvShell && typeof window.__tvShell.setForeground === 'function' && window.__tvShell.setForeground(true)");
         if (errorPanel.getVisibility() != View.VISIBLE) webView.requestFocus(View.FOCUS_DOWN);
         // Give a foreground startup a fresh ready budget.

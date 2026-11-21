@@ -24,6 +24,8 @@ mkdirSync(SHOTS, { recursive: true });
 
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, hasTouch: false });
+// The sections below test the classic Live TV screen; the programme-guide screen has its own section at the end.
+await context.addInitScript(() => { try { localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
 const page = await context.newPage();
 const consoleErrors = [];
 const bridgeLogs = [];
@@ -676,8 +678,8 @@ console.log('9b. under the Android bridge: movies and episodes go straight to th
     check(r.movie.join(',') === 'onSilentPlayback', 'a movie goes to the built-in player when it starts: ' + r.movie.join(','));
     check(r.episode.join(',').startsWith('onSilentPlayback') && !r.episode.join(',').includes('onPlaybackError'),
         'a format error on an episode opens the built-in player, not the prompt: ' + r.episode.join(','));
-    check(r.live.join(',') === 'onPlaybackError', 'live TV keeps the prompt: ' + r.live.join(','));
-    check(r.bare.join(',') === 'onPlaybackError', 'a live stream without /live/ or a file extension stays in the page: ' + r.bare.join(','));
+    check(r.live.join(',') === 'onSilentPlayback', 'live TV goes to the built-in player: ' + r.live.join(','));
+    check(r.bare.join(',') === 'onSilentPlayback', 'a live stream without /live/ or a file extension goes there too: ' + r.bare.join(','));
     const cover = await movie.evaluate(() => {
         const had = !!document.querySelector('[data-tvshell-cover]');
         window.__tvNativeClosed();
@@ -685,6 +687,32 @@ console.log('9b. under the Android bridge: movies and episodes go straight to th
     });
     check(cover[0] === true && cover[1] === false, 'a handed-off movie hides the page player under a cover until the built-in player closes: ' + cover.join(','));
     await movie.close();
+}
+console.log('9b2. native-live off: live TV keeps the page player and its prompt');
+{
+    const off = await context.newPage();
+    await off.addInitScript(() => {
+        window.__calls = [];
+        try { localStorage.removeItem('native-movies'); localStorage.setItem('native-live', 'off'); } catch (e) { /* ignore */ }
+        window.TvShell = { postMessage: (data) => { window.__calls.push(JSON.parse(data).map(String).join(' ')); } };
+    });
+    await off.goto(URL_, { waitUntil: 'networkidle' });
+    await off.waitForTimeout(1500);
+    const calls = await off.evaluate(async (provider) => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const l = document.createElement('video');
+        l.src = provider + '/live/user/pass/7.m3u8';
+        document.body.appendChild(l);
+        window.__calls.length = 0;
+        Object.defineProperty(l, 'error', { configurable: true, get: () => ({ code: 4 }) });
+        l.dispatchEvent(new Event('play'));
+        l.dispatchEvent(new Event('error'));
+        await wait(1200);
+        return window.__calls.filter((c) => /^(onSilentPlayback|onPlaybackError) /.test(c)).map((c) => c.split(' ')[0]);
+    }, PROVIDER);
+    check(calls.join(',') === 'onPlaybackError', 'with native-live off, live TV keeps the prompt: ' + calls.join(','));
+    await off.evaluate(() => { try { localStorage.removeItem('native-live'); } catch (e) { /* ignore */ } });
+    await off.close();
 }
 console.log('9c. remote reaches an error screen\'s buttons and a list row\'s menu');
 {
@@ -1507,6 +1535,27 @@ console.log('19. under the Android bridge: a text field reached with the D-pad k
     check(await field.inputValue() === '@', 'AltGr can type the first character into a held field');
     check(await keyboardRequests() === requestsBeforeHardwareEdits, 'hardware edits do not request the on-screen keyboard');
     await tvPage.close();
+}
+console.log('12. Live TV opens as a programme guide (TV guide mode)');
+{
+    await page.evaluate(() => { try { localStorage.removeItem('tv-guide'); } catch (e) { /* ignore */ } });
+    await page.goto(URL_, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    const live = await reach(/\[Live/i, ['ArrowLeft', 'ArrowDown']);
+    console.log('  focused:', live);
+    await key('Enter');
+    await page.waitForTimeout(3500);
+    await snap('tv-guide');
+    const guide = await page.evaluate(() => ({
+        host: !!document.querySelector('.epg-guide-host'),
+        rows: document.querySelectorAll('.epg-guide-row').length,
+        hiddenPlayer: !!document.querySelector('.tv-guide-player-hidden') || !document.querySelector('app-web-player-view'),
+    }));
+    console.log('  guide:', JSON.stringify(guide));
+    check(guide.host, 'Live TV opens the programme guide by itself');
+    check(guide.rows > 0, 'the guide lists channel rows: ' + guide.rows);
+    check(guide.hiddenPlayer, 'the page player is not shown in the guide');
+    await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
 }
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
 process.exitCode = failures ? 1 : 0;

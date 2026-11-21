@@ -1060,8 +1060,14 @@
     // ---------------------------------------------------------------- diagnostics
     /** Menu pressed five times quickly shows frame rate, memory and page size; OK toggles native live TV. */
     var diag = { el: null, raf: 0, frames: 0, since: 0, fps: 0, worst: 0, lastFrame: 0, timer: 0, presses: [] };
-    /** Live TV always plays in the app's own web player; only movies and episodes use the built-in one. */
-    function nativeLiveOn() { return false; }
+    /**
+     * Live channels play in the built-in player too (the web player struggled on a Fire Stick).
+     * Kill switch: localStorage['native-live'] = 'off' brings the page's own player back.
+     */
+    function nativeLiveOn() {
+        if (!isAndroid) return false;
+        try { return localStorage.getItem('native-live') !== 'off' && localStorage.getItem('native-movies') !== 'off'; } catch (err) { return true; }
+    }
     function diagText() {
         var mem = window.performance && performance.memory;
         var heap = mem ? Math.round(mem.usedJSHeapSize / 1048576) + ' MB' : 'n/a';
@@ -1583,7 +1589,9 @@
             return false;
         }
         /** The built-in player closed: drop the cover; close the page's player if it is still there. */
-        window.__tvNativeClosed = function () {
+        window.__tvNativeClosed = function (zap) {
+            // Channel up/down in the built-in player: play the next channel of the guide.
+            if (zap) setTimeout(function () { zapChannel(zap > 0 ? 1 : -1); }, 150);
             // The cover may be gone already (it times out while a movie plays); the page's player
             // still has to be closed when the built-in player is.
             if (!nativeOpen) return;
@@ -1598,6 +1606,15 @@
                 if (closePagePlayer()) clearInterval(again);
             }, 250);
         };
+        /** Plays the channel after (or before) the playing one in the programme guide, if it is open. */
+        function zapChannel(dir) {
+            var rows = Array.prototype.slice.call(document.querySelectorAll('.epg-guide-row'));
+            var at = -1;
+            for (var i = 0; i < rows.length; i++) if (rows[i].classList.contains('is-active')) { at = i; break; }
+            var next = at >= 0 ? rows[at + dir] : null;
+            var button = next && next.querySelector('.epg-guide-row__channel');
+            if (button) button.click();
+        }
         function handOff(v, url) {
             showCover(v);
             try { v.pause(); } catch (err) { /* ignore */ }

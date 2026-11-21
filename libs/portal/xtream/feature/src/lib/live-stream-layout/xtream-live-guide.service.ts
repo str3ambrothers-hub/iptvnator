@@ -30,6 +30,20 @@ import { XtreamEpgGuideSourceService } from './xtream-epg-guide-source.service';
 
 const ACTION = 'xtream-epg-guide';
 
+/**
+ * TV mode: the programme guide is the live TV screen (it opens on its own, with no channel
+ * playing, and the page's own player stays hidden: channels play in the built-in player).
+ * Active in the TV shell only. Kill switch: `localStorage['tv-guide'] = 'off'`.
+ */
+export function isTvGuideEnabled(doc: Document = document): boolean {
+    if (!doc.documentElement.classList.contains('tv-shell')) return false;
+    try {
+        return doc.defaultView?.localStorage?.getItem('tv-guide') !== 'off';
+    } catch {
+        return true;
+    }
+}
+
 @Injectable()
 export class XtreamLiveGuideService {
     private readonly source = inject(XtreamEpgGuideSourceService);
@@ -43,6 +57,8 @@ export class XtreamLiveGuideService {
     private readonly playing = signal<Signal<boolean> | null>(null);
     private returnFocus: HTMLElement | null = null;
 
+    readonly tvMode = isTvGuideEnabled();
+    private autoOpened = false;
     readonly isOpen = signal(false);
     readonly collapsed = signal(restoreEpgGuideDockCollapsed());
     private readonly enabled = computed(
@@ -50,7 +66,10 @@ export class XtreamLiveGuideService {
     );
     private readonly playlistId = computed(() => this.source.playlist()?.id);
     readonly available = computed(
-        () => this.enabled() && !!this.playing()?.() && !!this.playlistId()
+        () =>
+            this.enabled() &&
+            (this.tvMode || !!this.playing()?.()) &&
+            !!this.playlistId()
     );
 
     constructor() {
@@ -88,6 +107,14 @@ export class XtreamLiveGuideService {
         });
         effect(() => {
             if (!this.available()) untracked(() => this.close());
+        });
+        effect(() => {
+            // TV mode: the guide is the first thing the live screen shows, once per visit.
+            if (!this.tvMode || this.autoOpened || !this.available()) return;
+            this.autoOpened = true;
+            afterNextRender(() => untracked(() => this.open()), {
+                injector: this.injector,
+            });
         });
         this.destroyRef.onDestroy(() => this.source.close());
     }

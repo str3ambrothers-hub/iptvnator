@@ -40,6 +40,23 @@ public class NativePlayerActivity extends android.app.Activity {
 
     private static final String EXTRA_URL = "url";
     private static final String EXTRA_TITLE = "title";
+    private static final String EXTRA_LIVE = "live";
+
+    /** Channel change asked for in the last live session (-1 previous, +1 next, 0 none); read once by MainActivity. */
+    private static volatile int pendingZap;
+
+    static int takeZap() {
+        int zap = pendingZap;
+        pendingZap = 0;
+        return zap;
+    }
+
+    /** Provider live URLs have no /movie/ or /series/ part; those two are on demand. */
+    static boolean looksLive(String url) {
+        return url != null && !url.contains("/movie/") && !url.contains("/series/");
+    }
+
+    private boolean live;
 
     private ExoPlayer player;
     private PlayerView view;
@@ -48,6 +65,7 @@ public class NativePlayerActivity extends android.app.Activity {
         Intent intent = new Intent(context, NativePlayerActivity.class);
         intent.putExtra(EXTRA_URL, url);
         intent.putExtra(EXTRA_TITLE, title == null ? "" : title);
+        intent.putExtra(EXTRA_LIVE, looksLive(url));
         return intent;
     }
 
@@ -60,6 +78,8 @@ public class NativePlayerActivity extends android.app.Activity {
             return;
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        live = getIntent().getBooleanExtra(EXTRA_LIVE, false);
+        pendingZap = 0;
         view = new PlayerView(this);
         view.setKeepScreenOn(true);
         view.setControllerShowTimeoutMs(4000);
@@ -103,6 +123,19 @@ public class NativePlayerActivity extends android.app.Activity {
             }
         });
         setContentView(root);
+        if (live) {
+            // A live channel has no timeline or seeking: keep only play/pause and the Back button.
+            view.setShowFastForwardButton(false);
+            view.setShowRewindButton(false);
+            view.setShowNextButton(false);
+            view.setShowPreviousButton(false);
+            for (int id : new int[] {
+                androidx.media3.ui.R.id.exo_progress, androidx.media3.ui.R.id.exo_position,
+                androidx.media3.ui.R.id.exo_duration}) {
+                View part = view.findViewById(id);
+                if (part != null) part.setVisibility(View.GONE);
+            }
+        }
         view.setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
             | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
 
@@ -270,16 +303,31 @@ public class NativePlayerActivity extends android.app.Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (live && view != null && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+            int keyCode = event.getKeyCode();
+            boolean controls = view.isControllerFullyVisible();
+            // Channel keys always change channel; up/down do too while the controls are hidden.
+            int zap = 0;
+            if (keyCode == KeyEvent.KEYCODE_CHANNEL_UP) zap = 1;
+            else if (keyCode == KeyEvent.KEYCODE_CHANNEL_DOWN) zap = -1;
+            else if (!controls && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) zap = 1;
+            else if (!controls && keyCode == KeyEvent.KEYCODE_DPAD_UP) zap = -1;
+            if (zap != 0) {
+                pendingZap = zap;
+                finish();
+                return true;
+            }
+        }
         if (view != null && player != null && event.getAction() == KeyEvent.ACTION_DOWN) {
             switch (event.getKeyCode()) {
                 case KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (!view.isControllerFullyVisible()) {
+                    if (!live && !view.isControllerFullyVisible()) {
                         player.seekBack();
                         return true;
                     }
                     break;
                 case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (!view.isControllerFullyVisible()) {
+                    if (!live && !view.isControllerFullyVisible()) {
                         player.seekForward();
                         return true;
                     }

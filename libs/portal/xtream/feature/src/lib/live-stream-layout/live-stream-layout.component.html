@@ -164,7 +164,9 @@
         </button>
     }
     @if (
-        streamUrl || (!isEmbeddedPlayer && guide.isOpen() && guide.available())
+        streamUrl ||
+        (guide.tvMode && guide.isOpen()) ||
+        (!isEmbeddedPlayer && guide.isOpen() && guide.available())
     ) {
         @if (isEmbeddedPlayer) {
             <div
@@ -175,6 +177,9 @@
             >
                 <app-web-player-view
                     #inlinePlayer
+                    [class.tv-guide-player-hidden]="
+                        guide.tvMode && guide.isOpen()
+                    "
                     [playbackSessionKey]="playbackSessionKey()"
                     [streamUrl]="streamUrl"
                     [title]="activePlayback()?.title ?? ''"
