@@ -25,7 +25,7 @@ mkdirSync(SHOTS, { recursive: true });
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, hasTouch: false });
 // The sections below test the classic Live TV screen; the programme-guide screen has its own section at the end.
-await context.addInitScript(() => { try { localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
+await context.addInitScript(() => { try { if (localStorage.getItem('tv-guide') === null) localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
 const page = await context.newPage();
 const consoleErrors = [];
 const bridgeLogs = [];
@@ -1538,7 +1538,7 @@ console.log('19. under the Android bridge: a text field reached with the D-pad k
 }
 console.log('12. Live TV opens as a programme guide (TV guide mode)');
 {
-    await page.evaluate(() => { try { localStorage.removeItem('tv-guide'); } catch (e) { /* ignore */ } });
+    await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'on'); } catch (e) { /* ignore */ } });
     await page.goto(URL_, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     const live = await reach(/\[Live/i, ['ArrowLeft', 'ArrowDown']);
@@ -1549,6 +1549,8 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     const guide = await page.evaluate(() => ({
         host: !!document.querySelector('.epg-guide-host'),
         rows: document.querySelectorAll('.epg-guide-row').length,
+        action: !!document.querySelector('[data-test-id="xtream-epg-guide"]'),
+        shell: document.documentElement.classList.contains('tv-shell'),
         hiddenPlayer: !!document.querySelector('.tv-guide-player-hidden') || !document.querySelector('app-web-player-view'),
     }));
     console.log('  guide:', JSON.stringify(guide));
