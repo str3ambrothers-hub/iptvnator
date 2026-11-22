@@ -51,6 +51,10 @@ function defaultStorage(): Storage {
 /** Never stored: on in the TV app (channels without programme data are mostly dead entries), off elsewhere. */
 function onlyWithEpgFrom(stored: string | null): boolean {
     if (stored !== null) return stored === '1';
+    return epgGuideOnlyWithEpgDefault();
+}
+
+export function epgGuideOnlyWithEpgDefault(): boolean {
     return (
         typeof document !== 'undefined' &&
         document.documentElement.classList.contains('tv-shell')

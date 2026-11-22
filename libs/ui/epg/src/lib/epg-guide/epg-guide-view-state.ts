@@ -17,6 +17,7 @@ import {
 } from './epg-guide-layout.util';
 import {
     clampGuideZoom,
+    epgGuideOnlyWithEpgDefault,
     persistEpgGuidePreferences,
     restoreEpgGuidePreferences,
 } from './epg-guide-preferences';
@@ -83,8 +84,12 @@ export class EpgGuideViewState {
     );
 
     constructor(rememberCoverageFilter = true) {
+        // Providers that check coverage per channel (Xtream) do not remember the toggle, so the TV
+        // app's "on" default has to apply every time the guide opens.
         this.onlyWithEpg = signal(
-            rememberCoverageFilter && this.preferences.onlyWithEpg
+            rememberCoverageFilter
+                ? this.preferences.onlyWithEpg
+                : epgGuideOnlyWithEpgDefault()
         );
         effect(() =>
             persistEpgGuidePreferences({

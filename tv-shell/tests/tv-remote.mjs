@@ -1581,6 +1581,8 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
         const box = document.querySelector('.guide-toolbar__toggle input')?.getBoundingClientRect();
         return box ? [Math.round(box.width), Math.round(box.height)] : null;
     });
+    const epgOn = await page.evaluate(() => !!document.querySelector('.guide-toolbar__toggle input')?.checked);
+    check(epgOn, 'the "Only with EPG" toggle starts on in the TV app');
     check(toggle && toggle[0] > 10 && toggle[1] > 10, 'the "Only with EPG" toggle is big enough for the remote to focus: ' + JSON.stringify(toggle));
     check(guide.rows > 0, 'the guide lists channel rows: ' + guide.rows);
     check(guide.hiddenPlayer, 'the page player is not shown in the guide');
