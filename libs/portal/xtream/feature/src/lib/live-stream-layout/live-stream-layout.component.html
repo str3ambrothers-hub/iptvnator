@@ -205,7 +205,7 @@
             <app-epg-guide
                 class="epg-guide-host"
                 tabindex="-1"
-                (close)="guide.close()"
+                (close)="guide.closeToCategories()"
             />
         }
         @if (supportsProviderEpg && !guide.isOpen()) {
@@ -220,6 +220,12 @@
                 <ng-container *ngTemplateOutlet="epgPanelContent" />
             </div>
         }
+    } @else if (guide.tvMode && !showLiveChannelSidebar()) {
+        <!-- TV mode: Live TV starts at the categories; the guide opens once one is picked. -->
+        <app-portal-empty-state
+            icon="live_tv"
+            [message]="'PORTALS.SELECT_CATEGORY' | translate"
+        />
     } @else if (!showLiveChannelSidebar()) {
         <!-- The way back to the folded categories rail, for the views with no
              channels header. Outside the loading switch so the same button

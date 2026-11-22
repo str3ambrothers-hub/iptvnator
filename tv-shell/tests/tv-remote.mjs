@@ -1559,6 +1559,13 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     const live = await reach(/\[Live/i, ['ArrowLeft', 'ArrowDown']);
     console.log('  focused:', live);
     await key('Enter');
+    await page.waitForTimeout(3000);
+    const first = await page.evaluate(() => ({
+        guide: !!document.querySelector('.epg-guide-host'),
+        categories: document.querySelectorAll('button.category-item').length,
+    }));
+    check(!first.guide && first.categories > 0, 'Live TV starts at the categories, not the guide: ' + JSON.stringify(first));
+    await page.evaluate(() => document.querySelector('button.category-item')?.click());
     await page.waitForTimeout(3500);
     await snap('tv-guide');
     const guide = await page.evaluate(() => ({
@@ -1593,6 +1600,15 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     await page.waitForTimeout(2000);
     const played = await rowOf();
     check(played.playing === moved.box, 'OK plays the channel under the selection box: ' + JSON.stringify([moved.box, played.playing]));
+    await key('Escape');
+    await page.waitForTimeout(1500);
+    const closed = await page.evaluate(() => ({
+        guide: !!document.querySelector('.epg-guide-host'),
+        oldList: !!document.querySelector('app-portal-channels-list'),
+        categories: document.querySelectorAll('button.category-item').length,
+    }));
+    check(!closed.guide && !closed.oldList && closed.categories > 0,
+        'closing the guide goes back to the categories, not the old channel list: ' + JSON.stringify(closed));
     await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
 }
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');

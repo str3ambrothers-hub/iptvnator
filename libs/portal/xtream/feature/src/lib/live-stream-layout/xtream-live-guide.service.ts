@@ -26,6 +26,7 @@ import {
     persistEpgGuideDockCollapsed,
     restoreEpgGuideDockCollapsed,
 } from '@iptvnator/ui/epg';
+import { XtreamStore } from '@iptvnator/portal/xtream/data-access';
 import { XtreamEpgGuideSourceService } from './xtream-epg-guide-source.service';
 
 const ACTION = 'xtream-epg-guide';
@@ -47,6 +48,7 @@ export function isTvGuideEnabled(doc: Document = document): boolean {
 @Injectable()
 export class XtreamLiveGuideService {
     private readonly source = inject(XtreamEpgGuideSourceService);
+    private readonly store = inject(XtreamStore);
     private readonly programmes = inject(EpgProgrammeDialogService);
     private readonly runtime = inject(RuntimeCapabilitiesService);
     private readonly preferences = inject(EpgPreferencesService);
@@ -58,7 +60,6 @@ export class XtreamLiveGuideService {
     private returnFocus: HTMLElement | null = null;
 
     readonly tvMode = isTvGuideEnabled();
-    private autoOpened = false;
     readonly isOpen = signal(false);
     readonly collapsed = signal(restoreEpgGuideDockCollapsed());
     private readonly enabled = computed(
@@ -109,9 +110,11 @@ export class XtreamLiveGuideService {
             if (!this.available()) untracked(() => this.close());
         });
         effect(() => {
-            // TV mode: the guide is the first thing the live screen shows, once per visit.
-            if (!this.tvMode || this.autoOpened || !this.available()) return;
-            this.autoOpened = true;
+            // TV mode: Live TV shows the categories first; picking one opens the guide for it.
+            // Closing the guide goes back to the categories (closeToCategories), so picking
+            // another category opens the guide again.
+            if (!this.tvMode || !this.available()) return;
+            if (this.store.selectedCategoryId() === null) return;
             afterNextRender(() => untracked(() => this.open()), {
                 injector: this.injector,
             });
@@ -182,8 +185,16 @@ export class XtreamLiveGuideService {
         }
     }
 
+    /** TV mode: leaving the guide goes back to the categories, never to the old channel list and player. */
+    closeToCategories(): void {
+        this.close();
+        if (this.tvMode && !this.destroyRef.destroyed) {
+            this.store.setSelectedCategory(null);
+        }
+    }
+
     toggle(): void {
-        if (this.isOpen()) this.close();
+        if (this.isOpen()) this.closeToCategories();
         else this.open();
     }
 
