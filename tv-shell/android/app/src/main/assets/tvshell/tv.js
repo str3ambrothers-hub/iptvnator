@@ -728,6 +728,9 @@
      * guide steps; the remote layer only takes over at an edge, to reach the rail or the toolbar.
      * Kill switch: localStorage['guide-own-keys'] = 'off'.
      */
+    function guideKeysOff() {
+        try { return localStorage.getItem('guide-own-keys') === 'off'; } catch (err) { return false; }
+    }
     function guideOwnsArrow(el, dir) {
         if (!el.hasAttribute || !el.hasAttribute('data-epg-guide-grid')) return false;
         try { if (localStorage.getItem('guide-own-keys') === 'off') return false; } catch (err) { /* default on */ }
@@ -945,6 +948,9 @@
             }
             // Android's DPAD_CENTER maps to Enter. Native checkboxes/radios only activate
             // with Space in a browser, so handle OK explicitly and prevent form submission.
+            // The programme guide's channel cell is made focusable by the remote layer, but a click on it
+            // only previews; its own keyboard controller plays on OK, so leave the key to the guide.
+            if (active.hasAttribute('data-epg-guide-grid') && !guideKeysOff()) return;
             if ((active.tagName === 'INPUT' && /^(checkbox|radio)$/.test(active.type)) || active.hasAttribute(MADE_FOCUSABLE)) {
                 event.preventDefault();
                 event.stopImmediatePropagation();
@@ -1350,6 +1356,11 @@
         return null;
     }
 
+    /** hls.js/MSE gives the page video a blob: address the native player cannot open; only real network URLs count. */
+    function realMediaUrl(src) {
+        return src && /^(https?|rtsp|rtmp):/i.test(src) ? src : '';
+    }
+
     api.currentStreamUrl = function () {
         var fromVjs = videoJsSource();
         if (fromVjs) return fromVjs;
@@ -1561,7 +1572,7 @@
                 currentVideo = t;
                 noteMediaUrl(t.currentSrc || t.getAttribute('src'), null, true);
                 lastMediaTitle = document.title;
-                var startUrl = t.currentSrc || t.getAttribute('src') || api.currentStreamUrl();
+                var startUrl = realMediaUrl(t.currentSrc) || realMediaUrl(t.getAttribute('src')) || api.currentStreamUrl();
                 if (t.tagName === 'VIDEO' && (nativeLiveOn() || (nativeMoviesOn() && isVodUrl(startUrl))) && claimNative(startUrl)) {
                     handOff(t, startUrl);
                 }
@@ -1660,7 +1671,7 @@
         document.addEventListener('loadstart', function (e) {
             var v = e.target;
             if (!v || v.tagName !== 'VIDEO' || !foreground || !nativeMoviesOn()) return;
-            var url = v.currentSrc || v.getAttribute('src');
+            var url = realMediaUrl(v.currentSrc) || realMediaUrl(v.getAttribute('src'));
             if (!url || !/\/(movie|series)\//.test(url) || !isVodUrl(url) || !claimNative(url)) return;
             handOff(v, url);
         }, true);

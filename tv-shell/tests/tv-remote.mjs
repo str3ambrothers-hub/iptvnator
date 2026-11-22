@@ -673,8 +673,23 @@ console.log('9b. under the Android bridge: movies and episodes go straight to th
         b.dispatchEvent(new Event('error'));
         await wait(1200);
         out.bare = calls();
+        // hls.js gives the page video a blob: address; the built-in player must get the real stream.
+        document.querySelectorAll('video').forEach((v) => v.remove());
+        const h = document.createElement('video');
+        h.src = URL.createObjectURL(new Blob(['x'], { type: 'video/mp4' }));
+        document.body.appendChild(h);
+        window.__calls.length = 0;
+        const xr = new XMLHttpRequest();
+        xr.open('GET', provider + '/live/user/pass/21.m3u8');
+        xr.send();
+        await wait(300);
+        h.dispatchEvent(new Event('play'));
+        await wait(800);
+        out.blobCalls = window.__calls.filter((c) => /^onSilentPlayback /.test(c));
         return out;
     }, PROVIDER);
+    check(r.blobCalls.length === 1 && !/blob:/.test(r.blobCalls[0]) && /\/live\/user\/pass\/21\.m3u8/.test(r.blobCalls[0]),
+        'a blob: page source hands the real stream URL to the built-in player: ' + r.blobCalls.join(' | '));
     check(r.movie.join(',') === 'onSilentPlayback', 'a movie goes to the built-in player when it starts: ' + r.movie.join(','));
     check(r.episode.join(',').startsWith('onSilentPlayback') && !r.episode.join(',').includes('onPlaybackError'),
         'a format error on an episode opens the built-in player, not the prompt: ' + r.episode.join(','));
