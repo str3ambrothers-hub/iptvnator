@@ -251,11 +251,13 @@ export class LiveStreamLayoutComponent
     readonly workspaceSearchTerm = queryParamSignal(this.route, 'q', (value) =>
         (value ?? '').trim()
     );
+    // TV mode has no channel-list sidebar: the categories rail and the guide replace it.
     readonly showLiveChannelSidebar = computed(
         () =>
-            !!this.selectedCategoryId() ||
-            !!this.workspaceSearchTerm() ||
-            !!this.activeStreamUrl()
+            !this.guide.tvMode &&
+            (!!this.selectedCategoryId() ||
+                !!this.workspaceSearchTerm() ||
+                !!this.activeStreamUrl())
     );
     private readonly pendingAutoOpenLiveItemId =
         this.liveAutoOpenState.pendingItemId;

@@ -228,7 +228,7 @@ export class XtreamLiveGuideService {
                 )
         )
             return;
-        if (escapeDock) this.close();
+        if (escapeDock) this.closeToCategories();
         else if (!event.repeat) this.toggle();
         event.preventDefault();
     }

@@ -382,7 +382,7 @@
         [collapsed]="guide.collapsed() || !usesEmbeddedPlayer()"
         [collapsible]="usesEmbeddedPlayer()"
         (keydown)="guide.handleKey($event)"
-        (closeRequested)="guide.close()"
+        (closeRequested)="guide.closeToCategories()"
         (collapsedChange)="guide.setCollapsed($event)"
     />
 </ng-template>
