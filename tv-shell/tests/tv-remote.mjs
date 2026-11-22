@@ -1553,7 +1553,7 @@ console.log('19. under the Android bridge: a text field reached with the D-pad k
 }
 console.log('12. Live TV opens as a programme guide (TV guide mode)');
 {
-    await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'on'); } catch (e) { /* ignore */ } });
+    await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'on'); localStorage.setItem('epg-guide:only-with-epg', '0'); } catch (e) { /* ignore */ } });
     await page.goto(URL_, { waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     const live = await reach(/\[Live/i, ['ArrowLeft', 'ArrowDown']);
@@ -1577,6 +1577,11 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     }));
     console.log('  guide:', JSON.stringify(guide));
     check(guide.host, 'Live TV opens the programme guide by itself');
+    const toggle = await page.evaluate(() => {
+        const box = document.querySelector('.guide-toolbar__toggle input')?.getBoundingClientRect();
+        return box ? [Math.round(box.width), Math.round(box.height)] : null;
+    });
+    check(toggle && toggle[0] > 10 && toggle[1] > 10, 'the "Only with EPG" toggle is big enough for the remote to focus: ' + JSON.stringify(toggle));
     check(guide.rows > 0, 'the guide lists channel rows: ' + guide.rows);
     check(guide.hiddenPlayer, 'the page player is not shown in the guide');
     // The selection box and the guide's own selection stay on the same channel, and OK plays it.

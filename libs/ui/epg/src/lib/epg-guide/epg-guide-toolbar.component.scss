@@ -126,12 +126,17 @@
     font-size: 12.5px;
     cursor: pointer;
     white-space: nowrap;
+    position: relative;
 
+    /* Invisible, but as large as the label: a zero-size input is skipped by the TV remote's focus search. */
     input {
         position: absolute;
+        inset: 0;
+        margin: 0;
         opacity: 0;
-        width: 0;
-        height: 0;
+        width: 100%;
+        height: 100%;
+        cursor: inherit;
     }
     i {
         width: 30px;

@@ -48,6 +48,15 @@ function defaultStorage(): Storage {
     return globalThis.localStorage;
 }
 
+/** Never stored: on in the TV app (channels without programme data are mostly dead entries), off elsewhere. */
+function onlyWithEpgFrom(stored: string | null): boolean {
+    if (stored !== null) return stored === '1';
+    return (
+        typeof document !== 'undefined' &&
+        document.documentElement.classList.contains('tv-shell')
+    );
+}
+
 export function restoreEpgGuidePreferences(
     storage: Storage = defaultStorage()
 ): EpgGuidePreferences {
@@ -64,7 +73,7 @@ export function restoreEpgGuidePreferences(
     return {
         density: isDensity(density) ? density : 'comfortable',
         zoom,
-        onlyWithEpg: read(storage, EPG_GUIDE_ONLY_WITH_EPG_KEY) === '1',
+        onlyWithEpg: onlyWithEpgFrom(read(storage, EPG_GUIDE_ONLY_WITH_EPG_KEY)),
     };
 }
 

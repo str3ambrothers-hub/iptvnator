@@ -22,6 +22,17 @@ describe('epg-guide-preferences', () => {
         expect(restoreEpgGuideDockCollapsed()).toBe(false);
     });
 
+    it('turns the toggle on by default in the TV app, but keeps a stored choice', () => {
+        document.documentElement.classList.add('tv-shell');
+        try {
+            expect(restoreEpgGuidePreferences().onlyWithEpg).toBe(true);
+            localStorage.setItem(EPG_GUIDE_ONLY_WITH_EPG_KEY, '0');
+            expect(restoreEpgGuidePreferences().onlyWithEpg).toBe(false);
+        } finally {
+            document.documentElement.classList.remove('tv-shell');
+        }
+    });
+
     it('round-trips every preference and clamps the zoom', () => {
         persistEpgGuidePreferences({
             density: 'compact',
