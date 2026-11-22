@@ -1,6 +1,8 @@
 import { EpgProgram } from '@iptvnator/shared/interfaces';
 
 const CONCURRENT_REQUESTS = 2;
+/** The whole-category "has EPG" scan may never take the last slot, so the rows on screen are always served first. */
+const BACKGROUND_REQUESTS = CONCURRENT_REQUESTS - 1;
 const REQUEST_PAUSE_MS = 200;
 const CACHED_STREAMS = 256;
 const SCHEDULE_TTL_MS = 5 * 60_000;
@@ -72,7 +74,8 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
         id: string,
         checkCurrent: () => void,
         fetch: FetchSchedule<T>,
-        consumer?: AbortSignal
+        consumer?: AbortSignal,
+        background = false
     ): Promise<T> {
         const signals = consumer
             ? [this.controller.signal, consumer]
@@ -90,7 +93,10 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
             }
             const entry = this.pending.get(id);
             if (entry) return this.consume(id, entry, signals);
-            if (this.slots.size < CONCURRENT_REQUESTS)
+            const limit = background
+                ? BACKGROUND_REQUESTS
+                : CONCURRENT_REQUESTS;
+            if (this.slots.size < limit)
                 return this.consume(id, this.start(id, fetch), signals);
             await waitFor(Promise.race([...this.slots]), signals);
         }

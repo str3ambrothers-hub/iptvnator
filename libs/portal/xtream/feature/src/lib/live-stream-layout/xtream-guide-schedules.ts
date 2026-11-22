@@ -76,7 +76,7 @@ export function injectXtreamGuideSchedules(
         (sessionId) => void api?.cancelSession(sessionId)
     );
 
-    function reader(signal?: AbortSignal) {
+    function reader(signal?: AbortSignal, background = false) {
         const current = revision();
         const owner = session()?.signal;
         if (!owner) throw new DOMException('EPG guide closed', 'AbortError');
@@ -110,7 +110,8 @@ export function injectXtreamGuideSchedules(
                     );
                     return { items, programs: items.map(toSharedEpgProgram) };
                 },
-                signal
+                signal,
+                background
             );
             checkCurrent();
             publish(key, current, schedule);
@@ -156,7 +157,7 @@ export function injectXtreamGuideSchedules(
                 programs: EpgProgram[] | null
             ) => void
         ): Promise<Set<string>> {
-            const { read, checkCurrent } = reader(window.signal);
+            const { read, checkCurrent } = reader(window.signal, true);
             const rows = scopedRows();
             const covered = new Set<string>();
             for (const { id } of window.channels) {

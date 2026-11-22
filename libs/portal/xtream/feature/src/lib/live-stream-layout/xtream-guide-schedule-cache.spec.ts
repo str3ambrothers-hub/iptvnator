@@ -60,6 +60,25 @@ describe('XtreamGuideScheduleCache', () => {
         await Promise.all([second, third]);
     });
 
+    it('lets the rows on screen go ahead of the background scan', async () => {
+        const cache = new XtreamGuideScheduleCache(jest.fn());
+        const { pending, finish } = deferredSchedules();
+        const current = () => undefined;
+        const scan1 = cache.load('1', current, pending, undefined, true);
+        const scan2 = cache.load('2', current, pending, undefined, true);
+        const row = cache.load('3', current, pending);
+        // One slot is always kept free: the second scan request waits, the visible row starts.
+        expect(pending).toHaveBeenCalledTimes(2);
+        finish[0]([]);
+        finish[1]([]);
+        await Promise.all([scan1, row]);
+        // Once a slot is free the waiting scan request goes ahead.
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        expect(pending).toHaveBeenCalledTimes(3);
+        finish[2]([]);
+        await scan2;
+    });
+
     it('cancels all consumers on clear but keeps slots for their unsettled transports', async () => {
         jest.useFakeTimers();
         const cancelTransport = jest.fn();
