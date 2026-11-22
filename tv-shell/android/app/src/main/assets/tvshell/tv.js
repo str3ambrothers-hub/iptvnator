@@ -721,8 +721,35 @@
         return end < el.value.length;
     }
 
+    /**
+     * The programme guide moves its own selection with the arrows (its keyboard controller keeps one
+     * row and one programme as "the selection" and plays it on OK). The remote layer moving focus
+     * as well put the highlight on one channel and OK on another. So inside the guide grid the
+     * guide steps; the remote layer only takes over at an edge, to reach the rail or the toolbar.
+     * Kill switch: localStorage['guide-own-keys'] = 'off'.
+     */
+    function guideOwnsArrow(el, dir) {
+        if (!el.hasAttribute || !el.hasAttribute('data-epg-guide-grid')) return false;
+        try { if (localStorage.getItem('guide-own-keys') === 'off') return false; } catch (err) { /* default on */ }
+        var isChannel = el.classList.contains('epg-guide-row__channel');
+        if (dir === 'left') {
+            // A programme with another one before it steps left; the first one (or the channel
+            // cell) lets the remote layer go on to the channel cell or the rail.
+            var before = el.previousElementSibling;
+            return !isChannel && !!before && before.hasAttribute('data-epg-guide-grid');
+        }
+        if (dir === 'right') return true;
+        var row = el.closest('.epg-guide-row');
+        var viewport = el.closest('.cdk-virtual-scroll-viewport');
+        if (!row || !viewport) return true;
+        var rows = viewport.querySelectorAll('.epg-guide-row');
+        if (dir === 'up') return !(rows[0] === row && viewport.scrollTop <= 1);
+        return !(rows[rows.length - 1] === row && viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 1);
+    }
+
     function passThroughArrow(el, dir) {
         if (!el || el === document.body) return false;
+        if (guideOwnsArrow(el, dir)) return true;
         var horizontal = dir === 'left' || dir === 'right';
         var tag = el.tagName;
         // On the video: Left/Right stay with the app (seek); Up/Down navigate

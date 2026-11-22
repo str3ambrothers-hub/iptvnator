@@ -1557,6 +1557,27 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     check(guide.host, 'Live TV opens the programme guide by itself');
     check(guide.rows > 0, 'the guide lists channel rows: ' + guide.rows);
     check(guide.hiddenPlayer, 'the page player is not shown in the guide');
+    // The selection box and the guide's own selection stay on the same channel, and OK plays it.
+    await page.evaluate(() => document.querySelectorAll('.epg-guide-row__channel')[1]?.focus());
+    await page.waitForTimeout(300);
+    for (let i = 0; i < 3; i++) await key('ArrowDown', 1, 250);
+    const rowOf = () => page.evaluate(() => {
+        const rows = [...document.querySelectorAll('.epg-guide-row')];
+        const own = (el) => (el ? rows.indexOf(el.closest('.epg-guide-row')) : -1);
+        return {
+            box: own(document.activeElement),
+            guide: own(document.querySelector('.epg-guide-row.is-focused')),
+            playing: own(document.querySelector('.epg-guide-row.is-active')),
+            name: document.activeElement?.closest('.epg-guide-row')?.querySelector('.epg-guide-row__name')?.textContent?.trim() || '',
+        };
+    });
+    const moved = await rowOf();
+    console.log('  after three Downs:', JSON.stringify(moved));
+    check(moved.box >= 0 && moved.box === moved.guide, 'the selection box and the guide selection are on the same row: ' + JSON.stringify(moved));
+    await key('Enter');
+    await page.waitForTimeout(2000);
+    const played = await rowOf();
+    check(played.playing === moved.box, 'OK plays the channel under the selection box: ' + JSON.stringify([moved.box, played.playing]));
     await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
 }
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
