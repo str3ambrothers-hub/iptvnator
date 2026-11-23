@@ -283,4 +283,11 @@ jobs:
             --prerelease --latest=false \
             --title "Newest Android TV build (${APK_VERSION}, build ${GITHUB_RUN_NUMBER})" \
             --notes "Always the newest build. Download link: https://github.com/${GITHUB_REPOSITORY}/releases/download/tv-shell-latest/iptvnator-tv.apk"
+          # GitHub sometimes leaves a release created straight after a delete as a draft, and a draft
+          # has no public download link (a 404). Make sure it is published.
+          for attempt in 1 2 3 4 5; do
+            if [ "$(gh release view tv-shell-latest --json isDraft -q .isDraft)" = "false" ]; then break; fi
+            gh release edit tv-shell-latest --draft=false --prerelease --latest=false || true
+            sleep 3
+          done
           echo "Fixed link: https://github.com/${GITHUB_REPOSITORY}/releases/download/tv-shell-latest/iptvnator-tv.apk"
