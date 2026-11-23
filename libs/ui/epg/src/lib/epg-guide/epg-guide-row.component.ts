@@ -111,6 +111,10 @@ export class EpgGuideRowComponent {
         return this.roving() && this.focusedBlock() === index ? 0 : -1;
     }
 
+    private readonly tvShell =
+        typeof document !== 'undefined' &&
+        document.documentElement.classList.contains('tv-shell');
+
     onChannelClick(event: MouseEvent): void {
         this.focusRequested.emit(null);
         this.activateGesture(event);
@@ -122,6 +126,11 @@ export class EpgGuideRowComponent {
         event: MouseEvent
     ): void {
         this.focusRequested.emit(index);
+        if (this.tvShell) {
+            // TV remote: OK on any programme, past or future, plays the channel's current show.
+            this.channelCommitted.emit(true);
+            return;
+        }
         if (item.block.when === 'now') {
             this.activateGesture(event);
         } else {

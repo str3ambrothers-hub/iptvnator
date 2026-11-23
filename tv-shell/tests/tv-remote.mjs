@@ -1607,6 +1607,21 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     await page.waitForTimeout(2000);
     const played = await rowOf();
     check(played.playing === moved.box, 'OK plays the channel under the selection box: ' + JSON.stringify([moved.box, played.playing]));
+    // OK on a programme that is not on now still plays that channel's current show.
+    const future = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('.epg-guide-row')];
+        const block = document.querySelector('.epg-guide-row__block.is-future, .epg-guide-row__block.is-past');
+        if (!block) return null;
+        const row = rows.indexOf(block.closest('.epg-guide-row'));
+        block.click();
+        return row;
+    });
+    if (future === null) console.log('  (no past or future programmes in the test data; click test skipped)');
+    else {
+        await page.waitForTimeout(2000);
+        const after = await rowOf();
+        check(after.playing === future, 'OK on a past/future programme plays its channel: ' + JSON.stringify([future, after.playing]));
+    }
     await page.evaluate(() => window.__tvShell.back()); // the remote's Back button
     await page.waitForTimeout(1500);
     const closed = await page.evaluate(() => ({
