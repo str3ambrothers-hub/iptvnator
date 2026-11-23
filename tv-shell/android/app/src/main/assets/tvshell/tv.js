@@ -578,6 +578,34 @@
         return el;
     }
 
+    /**
+     * The programme guide opens after a category is picked, but the focus stays on the (now hidden)
+     * category entry, so OK on a channel did nothing until Right moved it into the guide. When the guide
+     * appears, put the focus on its current channel. Kill switch: localStorage['guide-open-focus'] = 'off'.
+     */
+    var guideWasPresent = false;
+    function guideOpenFocus() {
+        var tries = 0;
+        (function attempt() {
+            var target = document.querySelector('.epg-guide-row.is-active .epg-guide-row__channel') ||
+                document.querySelector('.epg-guide-row__channel[tabindex="0"]') ||
+                document.querySelector('.epg-guide-row__channel');
+            if (!target || !isVisible(target)) {
+                if (++tries < 10) setTimeout(attempt, 250);
+                return;
+            }
+            var a = document.activeElement;
+            var gone = !a || a === document.body || !isVisible(a) || (a.closest && a.closest('app-workspace-context-panel'));
+            if (!gone) return; // the focus is already somewhere sensible
+            if (ensureFocusable(target)) setFocus(target, { silent: true });
+        })();
+    }
+    setInterval(function () {
+        var present = !!document.querySelector('.epg-guide-row');
+        if (present && !guideWasPresent && !killSwitchOff('guide-open-focus')) guideOpenFocus();
+        guideWasPresent = present;
+    }, 400);
+
     function move(dir, retried) {
         var scope = navigationScope();
         var active = document.activeElement;
