@@ -1640,6 +1640,7 @@
         window.__tvNativeClosed = function (zap) {
             // Channel up/down in the built-in player: play the next channel of the guide.
             if (zap) setTimeout(function () { zapChannel(zap > 0 ? 1 : -1); }, 150);
+            guideReturnFocus(zap ? 900 : 250);
             // The cover may be gone already (it times out while a movie plays); the page's player
             // still has to be closed when the built-in player is.
             if (!nativeOpen) return;
@@ -1654,6 +1655,28 @@
                 if (closePagePlayer()) clearInterval(again);
             }, 250);
         };
+        /**
+         * Coming back from the built-in player, put the selection on the channel that was playing in the
+         * programme guide instead of letting it fall to the first button on the page. Looks for a short
+         * while because the page can render a moment after the app returns.
+         * Kill switch: localStorage['guide-return-focus'] = 'off'.
+         */
+        function guideReturnFocus(delay) {
+            if (killSwitchOff('guide-return-focus')) return;
+            var tries = 0;
+            function attempt() {
+                var cell = document.querySelector('.epg-guide-row.is-active .epg-guide-row__channel');
+                if (!cell || !isVisible(cell)) {
+                    if (++tries < 8) setTimeout(attempt, 250);
+                    return;
+                }
+                var active = document.activeElement;
+                var inGuide = active && active !== document.body && active.closest && active.closest('.epg-guide-row');
+                if (inGuide) return; // the selection is already in the guide: leave it
+                if (ensureFocusable(cell)) setFocus(cell, { silent: true });
+            }
+            setTimeout(attempt, delay);
+        }
         /** Plays the channel after (or before) the playing one in the programme guide, if it is open. */
         function zapChannel(dir) {
             var rows = Array.prototype.slice.call(document.querySelectorAll('.epg-guide-row'));

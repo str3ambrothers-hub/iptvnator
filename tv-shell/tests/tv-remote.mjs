@@ -1607,6 +1607,19 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     await page.waitForTimeout(2000);
     const played = await rowOf();
     check(played.playing === moved.box, 'OK plays the channel under the selection box: ' + JSON.stringify([moved.box, played.playing]));
+    // Coming back from the built-in player lands on the channel that was playing, not the first button.
+    await page.evaluate(() => {
+        const first = [...document.querySelectorAll('button')].find((b) => !b.closest('.epg-guide-row') && b.offsetParent);
+        if (first) first.focus();
+        window.__tvNativeClosed(0);
+    });
+    await page.waitForTimeout(1500);
+    const back = await page.evaluate(() => {
+        const a = document.activeElement;
+        const row = a?.closest?.('.epg-guide-row');
+        return { inRow: !!row, active: !!row?.classList.contains('is-active') };
+    });
+    check(back.inRow && back.active, 'returning from the built-in player puts the selection on the playing channel: ' + JSON.stringify(back));
     // OK on a programme that is not on now still plays that channel's current show.
     const future = await page.evaluate(() => {
         const rows = [...document.querySelectorAll('.epg-guide-row')];
