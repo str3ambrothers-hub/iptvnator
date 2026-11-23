@@ -273,6 +273,34 @@ const walk = [];
 for (const k of ['ArrowDown', 'ArrowDown', 'ArrowRight', 'ArrowDown', 'ArrowDown']) walk.push((await key(k)) || '∅');
 console.log('  ' + walk.map((w) => w.slice(0, 70)).join('\n  '));
 
+console.log('6b. rail Right reaches the categories; Down on the last episode stays');
+{
+    await page.evaluate(() => {
+        const box = document.createElement('div');
+        box.id = 'nav-fixture';
+        box.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#000';
+        const btn = (cls, id, x, y, w = 160, h = 40, tag = 'button') =>
+            `<${tag} id="${id}" class="${cls}" style="position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px">${id}</${tag}>`;
+        box.innerHTML =
+            '<nav class="app-rail">' + btn('rail-btn', 'rail-movies', 10, 400) + '</nav>' +
+            '<app-workspace-context-panel>' + btn('nav-item category-item', 'cat-a', 200, 40) + btn('nav-item category-item', 'cat-b', 200, 100) + '</app-workspace-context-panel>' +
+            '<main>' + btn('movie-card', 'movie-far', 900, 400, 160, 200) + '</main>' +
+            '<section class="seasons-section"><div class="content-container">' +
+            ['ep1', 'ep2', 'ep3'].map((id, i) => '<app-episode-item style="position:absolute;left:500px;top:' + (40 + i * 60) + 'px">' + btn('episode-item__target', id, 500, 40 + i * 60, 300, 50) + '</app-episode-item>').join('') +
+            '</div></section>';
+        document.body.appendChild(box);
+        document.getElementById('rail-movies').focus();
+    });
+    await key('ArrowRight');
+    const afterRight = await page.evaluate(() => document.activeElement?.id);
+    check(/^cat-/.test(afterRight), 'Right from a rail icon reaches the category list, not a movie far away: ' + afterRight);
+    await page.evaluate(() => document.getElementById('ep3').focus());
+    await key('ArrowDown');
+    const afterDown = await page.evaluate(() => document.activeElement?.id);
+    check(afterDown === 'ep3', 'Down on the last episode stays on it: ' + afterDown);
+    await page.evaluate(() => document.getElementById('nav-fixture')?.remove());
+}
+
 console.log('7. Back walks up to the root, then arms the exit instead of dead presses');
 let armed = false;
 for (let i = 0; i < 8 && !armed; i++) {

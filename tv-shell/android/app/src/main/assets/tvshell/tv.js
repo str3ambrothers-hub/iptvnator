@@ -624,6 +624,29 @@
                 if (inRail) next = inRail;
             }
         }
+        // Right from a rail icon (Movies, Series) lands on the category list beside it, even when that
+        // list is short and no entry is level with the icon; otherwise the nearest thing level with it
+        // is a movie far to the right. Kill switch: localStorage['rail-to-categories'] = 'off'.
+        if (dir === 'right' && exclude && exclude.closest && scope === document && !killSwitchOff('rail-to-categories') &&
+            exclude.closest('.app-rail')) {
+            var panel = document.querySelector('app-workspace-context-panel');
+            if (panel && !panel.contains(next && next.el)) {
+                var entries = Array.prototype.slice.call(panel.querySelectorAll('.category-item')).filter(function (e) { return isVisible(e) && qualifies(e); });
+                var pick = null;
+                for (var ci = 0; ci < entries.length && !pick; ci++) {
+                    if (entries[ci].matches('.selected,.active,[aria-selected="true"]') || entries[ci].closest('.selected,.active,[aria-selected="true"]')) pick = entries[ci];
+                }
+                pick = pick || entries[0];
+                if (pick) next = { el: pick };
+            }
+        }
+        // Down on the last episode of a list stays there: it must not jump to the left menu, which
+        // loses the place in the list. Kill switch: localStorage['episode-stay'] = 'off'.
+        if (dir === 'down' && exclude && exclude.closest && scope === document && !killSwitchOff('episode-stay') &&
+            exclude.closest('app-episode-item')) {
+            var episodes = exclude.closest('.content-container,app-season-container,.seasons-section');
+            if (episodes && (!next || !episodes.contains(next.el))) next = null;
+        }
         // Channel list beside a preview player: keep the row's own actions reachable. When
         // Right leaves the row, prefer the picture over unrelated controls beside the list.
         // Left from that picture returns to the playing channel, not an overlay button in its
