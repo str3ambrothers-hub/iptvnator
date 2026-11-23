@@ -595,8 +595,10 @@
                 return;
             }
             var a = document.activeElement;
-            var gone = !a || a === document.body || !isVisible(a) || (a.closest && a.closest('app-workspace-context-panel'));
-            if (!gone) return; // the focus is already somewhere sensible
+            var guideRoot = target.closest('app-epg-guide') || target.closest('.epg-guide') || target.parentElement;
+            // Anything outside the guide (the category entry just picked, a hidden control, nothing) is
+            // where the focus was left by the click that opened it.
+            if (a && a !== document.body && guideRoot && guideRoot.contains(a)) return;
             if (ensureFocusable(target)) setFocus(target, { silent: true });
         })();
     }

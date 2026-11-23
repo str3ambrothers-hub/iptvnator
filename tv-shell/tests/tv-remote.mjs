@@ -1606,8 +1606,11 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     console.log('  guide:', JSON.stringify(guide));
     check(guide.host, 'Live TV opens the programme guide by itself');
     await page.waitForTimeout(1200);
-    const openFocus = await page.evaluate(() => !!document.activeElement?.closest?.('.epg-guide-row'));
-    check(openFocus, 'a freshly opened guide already has the focus on a channel, so OK works without pressing Right first');
+    const openFocus = await page.evaluate(() => {
+        const a = document.activeElement;
+        return { ok: !!a?.closest?.('.epg-guide-row'), tag: a?.tagName, cls: String(a?.className).slice(0, 60), rows: document.querySelectorAll('.epg-guide-row__channel').length };
+    });
+    check(openFocus.ok, 'a freshly opened guide already has the focus on a channel, so OK works without pressing Right first: ' + JSON.stringify(openFocus));
     const toggle = await page.evaluate(() => {
         const box = document.querySelector('.guide-toolbar__toggle input')?.getBoundingClientRect();
         return box ? [Math.round(box.width), Math.round(box.height)] : null;
