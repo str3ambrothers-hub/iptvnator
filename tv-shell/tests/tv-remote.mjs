@@ -1607,7 +1607,7 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     await page.waitForTimeout(2000);
     const played = await rowOf();
     check(played.playing === moved.box, 'OK plays the channel under the selection box: ' + JSON.stringify([moved.box, played.playing]));
-    await key('Escape');
+    await page.evaluate(() => window.__tvShell.back()); // the remote's Back button
     await page.waitForTimeout(1500);
     const closed = await page.evaluate(() => ({
         guide: !!document.querySelector('.epg-guide-host'),

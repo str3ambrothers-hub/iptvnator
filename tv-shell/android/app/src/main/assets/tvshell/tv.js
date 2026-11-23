@@ -1065,6 +1065,16 @@
             lastRect = rectOf(active);
             if (focusFirst(null, active)) return true;
         }
+        // The programme guide is open: Back closes it (to the category list) instead of leaving Live TV.
+        // The guide listens for Escape from anywhere on the page. Kill switch: localStorage['guide-back'] = 'off'.
+        var guideHead = document.querySelector('.epg-guide__head');
+        if (guideHead && isVisible(guideHead) && !killSwitchOff('guide-back')) {
+            var gev = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true });
+            gev.__tvshell = true;
+            (active && active !== document.body ? active : document.body).dispatchEvent(gev);
+            scheduleRefocus();
+            return true;
+        }
         // The app's own page-level Back lives in the workspace header. Match it by its
         // stable hooks (component class and the test id upstream relies on), not by the
         // aria-label, which is translated and overridden on detail pages.
