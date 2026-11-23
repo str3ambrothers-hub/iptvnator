@@ -598,7 +598,8 @@
             var guideRoot = target.closest('app-epg-guide') || target.closest('.epg-guide') || target.parentElement;
             // Anything outside the guide (the category entry just picked, a hidden control, nothing) is
             // where the focus was left by the click that opened it.
-            if (a && a !== document.body && guideRoot && guideRoot.contains(a)) return;
+            // The guide's own frame does not count: a key pressed there is not on a channel.
+            if (a && a !== document.body && a !== guideRoot && guideRoot && guideRoot.contains(a)) return;
             if (ensureFocusable(target)) setFocus(target, { silent: true });
         })();
     }
