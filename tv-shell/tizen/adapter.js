@@ -19,6 +19,8 @@
  * Kill switches (localStorage):
  *   'tizen-keys' = 'off'           leave all remote keys to the browser
  *   'tizen-keep-switches' = 'on'   do not force the Android-only features off
+ *   'tizen-avplay' = 'off'         no built-in player (player.js): movies and
+ *                                  live TV stay in the page's own player
  */
 (function (win) {
     'use strict';
@@ -67,14 +69,30 @@
     }
 
     // ------------------------------------------------------------ defaults
-    // No native player, external player or poster cache on Samsung yet: keep
-    // tv.js and the app on the page's own player and the original posters.
+    // No poster cache or external player on Samsung. The built-in player is
+    // player.js on Samsung's AVPlay; without AVPlay (or with 'tizen-avplay' off)
+    // movies and live TV stay in the page's own player. FORCED remembers that
+    // this script, not the owner, turned the player off, so it can turn it
+    // back on once AVPlay is there (builds before player.js always forced it).
+    var FORCED = 'tizen-native-forced-off';
+    var avplay = setting('tizen-avplay') !== 'off' && !!(win.webapis && win.webapis.avplay);
     if (store && setting('tizen-keep-switches') !== 'on') {
         try {
-            store.setItem('native-live', 'off');
-            store.setItem('native-movies', 'off');
             store.setItem('poster-cache', 'off');
+            if (!avplay) {
+                store.setItem('native-live', 'off');
+                store.setItem('native-movies', 'off');
+                store.setItem(FORCED, '1');
+            } else if (setting(FORCED) === '1' || setting(FORCED) === null) {
+                store.removeItem('native-live');
+                store.removeItem('native-movies');
+                store.setItem(FORCED, '0'); // from now on these switches are the owner's
+            }
         } catch (e) { /* storage full or blocked */ }
+    }
+    function playerOpen() {
+        var player = win.__streamBrosTizenPlayer;
+        return !!(player && player.isOpen());
     }
 
     // --------------------------------------------------------------- backend
@@ -160,7 +178,9 @@
         412: function (shell) { shell.media('rewind'); },
         417: function (shell) { shell.media('fastforward'); },
     };
-    var REGISTER = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaRewind', 'MediaFastForward', 'Tools'];
+    // ChannelUp/ChannelDown are for player.js (live TV: next / previous channel).
+    var REGISTER = ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaRewind', 'MediaFastForward', 'Tools',
+        'ChannelUp', 'ChannelDown'];
 
     if (setting('tizen-keys') !== 'off') {
         try {
@@ -173,6 +193,7 @@
 
         // Capture on window: runs before tv.js, which listens on document.
         win.addEventListener('keydown', function (event) {
+            if (playerOpen()) return; // player.js takes every key while it plays
             var action = KEYS[event.keyCode];
             var shell = win.__tvShell;
             if (!action || !shell) return;
@@ -183,7 +204,9 @@
     }
 
     // The TV hides the app (Home, another app, standby): tv.js pauses media.
+    // While player.js plays, the page stays in the background until it closes.
     doc.addEventListener('visibilitychange', function () {
+        if (playerOpen()) return;
         if (win.__tvShell && typeof win.__tvShell.setForeground === 'function') {
             win.__tvShell.setForeground(!doc.hidden);
         }

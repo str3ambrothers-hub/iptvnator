@@ -9,18 +9,35 @@ The same StreamBros app as on Fire TV, packaged for Samsung. Status:
 |---|---|
 | Java backend on loopback calls the provider | `backend.js` answers the same `/api/*` calls inside the page and calls the provider directly (allowed by `<access origin="*">` in `config.xml`) |
 | `MainActivity` / `TvShellBridge` handle Back, media keys, exit | `adapter.js` does the same for `tv.js`, which is unchanged |
-| Native player (Media3) for movies and live TV | Not yet: the page's own player is used (`native-live` / `native-movies` forced off) |
+| Native player (Media3) for movies and live TV | `player.js` on Samsung's **AVPlay**: same hand-over from `tv.js`, same keys (below). Without AVPlay, or with `tizen-avplay` off, the page's own player is used |
 | Poster cache (`/api/image`) | Not yet: original posters (`poster-cache` forced off) |
 | "Try another app" (VLC) | Not on Samsung: shows a message |
 | Xtream, M3U, Stalker | **Xtream only** for now (M3U and Stalker answer 501) |
 
-Kill switches (`localStorage`): `tizen-backend`, `tizen-keys` (`'off'`), and
-`tizen-keep-switches` (`'on'` stops the adapter forcing the three features off).
+Kill switches (`localStorage`): `tizen-backend`, `tizen-keys`, `tizen-avplay`
+(`'off'`), and `tizen-keep-switches` (`'on'` stops the adapter changing
+`poster-cache`, `native-live` and `native-movies`).
+
+### Built-in player keys (AVPlay)
+
+| Key | Movies / episodes | Live TV |
+|---|---|---|
+| Back, Stop | close | close (focus returns to the channel in the guide) |
+| OK | show the info bar; again: pause / play | same |
+| Play/Pause | pause / play | same |
+| Left / Right | 10 s back / forward | shows the bar |
+| Rewind / Fast forward | 30 s back / forward | — |
+| Up / Down | shows the bar | bar hidden: previous / next channel |
+| Channel up / down | — | next / previous channel |
+
+If AVPlay cannot play a stream, the player says so; Back returns to the app
+(there is no "other app" fallback on Samsung).
 
 ## Getting the app
 
-GitHub Actions → **Build Samsung TV app** → Run workflow (tick *create_release*).
-It runs the checks, builds the PWA and publishes an **unsigned** app folder:
+Every push to a `feat/tizen-*` branch runs GitHub Actions → **Build Samsung TV app**
+(once it is on master, *Run workflow* with *create_release* works too). A passing
+build runs the checks, builds the PWA and publishes an **unsigned** app folder:
 `https://github.com/str3ambrothers-hub/iptvnator/releases/download/tizen-shell-latest/streambros-samsung.zip`
 
 ## Signing and installing (Windows PC, once per TV)
@@ -58,6 +75,7 @@ settings stay on the TV.
   Chromium; TVs from before about 2022 have an older engine and may show a
   blank screen. Note the TV's model year and Tizen version.
 - Remote: arrows, OK, Back, Tools, Play/Pause; Back twice exits.
-- Live TV (MPEG-TS) and movies (MP4/MKV) in the page player. The plan is
-  to move playback to Samsung's AVPlay next, as the native player was on Fire TV.
+- AVPlay: picture shows full screen (not just sound), live TV (MPEG-TS and
+  HLS), movies (MP4/MKV, AC3 sound), seeking, channel up/down from the guide,
+  and Home → back into the app while playing (suspend/restore).
 - Login, catalogue of 30–50k items (memory), guide, backup server.

@@ -7,11 +7,11 @@
  *
  * What it does (the Tizen twin of TvShellServer's injection):
  *   - copies the PWA, without the service worker (a packaged app has no use for it)
- *   - adds tvshell/tv.js (unchanged) and tizenshell/backend.js + adapter.js
+ *   - adds tvshell/tv.js (unchanged) and tizenshell/backend.js, adapter.js, player.js
  *   - points the app at the in-page backend (assets/app-config.js: BACKEND_URL /api)
  *   - index.html: relative <base>, 1280px layout viewport like the Fire TV build,
  *     no CSP <meta> (Samsung's webapis.js is not 'self'), and the scripts in
- *     this order: webapis.js, backend.js, adapter.js, tv.js (defer), the app
+ *     this order: webapis.js, backend.js, adapter.js, player.js, tv.js (defer), the app
  *   - writes config.xml with the version and the app icon
  * No dependencies: plain Node 18+.
  */
@@ -27,6 +27,7 @@ export const SHELL_SCRIPTS = [
     SAMSUNG_API,
     '<script src="tizenshell/backend.js"></script>',
     '<script src="tizenshell/adapter.js"></script>',
+    '<script src="tizenshell/player.js"></script>',
     '<script src="tvshell/tv.js" defer></script>',
 ].join('\n        ');
 
@@ -64,6 +65,7 @@ export function packageTizen({ www, out, version }) {
     mkdirSync(join(out, 'tizenshell'), { recursive: true });
     cpSync(join(HERE, 'backend.js'), join(out, 'tizenshell', 'backend.js'));
     cpSync(join(HERE, 'adapter.js'), join(out, 'tizenshell', 'adapter.js'));
+    cpSync(join(HERE, 'player.js'), join(out, 'tizenshell', 'player.js'));
 
     mkdirSync(join(out, 'assets'), { recursive: true });
     writeFileSync(join(out, 'assets', 'app-config.js'), 'window.__IPTVNATOR_CONFIG__ = {"BACKEND_URL":"/api"};\n');

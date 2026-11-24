@@ -63,6 +63,7 @@ jobs:
           set -euo pipefail
           node --check "$SHELL_DIR/tizen/backend.js"
           node --check "$SHELL_DIR/tizen/adapter.js"
+          node --check "$SHELL_DIR/tizen/player.js"
           node --check "$SHELL_DIR/android/app/src/main/assets/tvshell/tv.js"
           node --test "$SHELL_DIR/tests/tizen-shell.test.mjs"
 

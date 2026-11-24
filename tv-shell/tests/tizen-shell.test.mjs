@@ -12,6 +12,7 @@ import { packageTizen, transformIndex } from '../tizen/package.mjs';
 const TIZEN = join(dirname(fileURLToPath(import.meta.url)), '..', 'tizen');
 const BACKEND_SRC = readFileSync(join(TIZEN, 'backend.js'), 'utf8');
 const ADAPTER_SRC = readFileSync(join(TIZEN, 'adapter.js'), 'utf8');
+const PLAYER_SRC = readFileSync(join(TIZEN, 'player.js'), 'utf8');
 const PAGE = 'file:///opt/usr/apps/StreamBros/res/wgt/index.html';
 // Objects made inside the vm sandbox have its prototypes: compare as plain data.
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -238,7 +239,7 @@ test('index.html: relative base, TV viewport, no CSP, shell scripts first in ord
     assert.match(html, /<base href="\.\/" \/>/);
     assert.match(html, /<meta name="viewport" content="width=1280" \/>/);
     assert.doesNotMatch(html, /Content-Security-Policy/);
-    const order = ['webapis/webapis.js', 'tizenshell/backend.js', 'tizenshell/adapter.js', 'tvshell/tv.js', 'assets/app-config.js', 'main-ABC.js']
+    const order = ['webapis/webapis.js', 'tizenshell/backend.js', 'tizenshell/adapter.js', 'tizenshell/player.js', 'tvshell/tv.js', 'assets/app-config.js', 'main-ABC.js']
         .map((s) => html.indexOf(s));
     assert.ok(order.every((i, n) => i > 0 && (n === 0 || i > order[n - 1])), `script order ${order}`);
 });
@@ -253,7 +254,7 @@ test('packageTizen builds a complete app folder', () => {
     writeFileSync(join(www, 'assets', 'app-config.js'), 'window.__IPTVNATOR_CONFIG__ = {};');
     writeFileSync(join(www, 'assets', 'icons', 'icon-tv-256.png'), 'png');
     const out = packageTizen({ www, out: join(dir, 'out'), version: '1.4.2' });
-    for (const f of ['index.html', 'main-ABC.js', 'icon.png', 'config.xml', 'tvshell/tv.js', 'tizenshell/backend.js', 'tizenshell/adapter.js']) {
+    for (const f of ['index.html', 'main-ABC.js', 'icon.png', 'config.xml', 'tvshell/tv.js', 'tizenshell/backend.js', 'tizenshell/adapter.js', 'tizenshell/player.js']) {
         assert.ok(existsSync(join(out, f)), f);
     }
     assert.equal(existsSync(join(out, 'ngsw-worker.js')), false);
@@ -263,4 +264,178 @@ test('packageTizen builds a complete app folder', () => {
     assert.match(config, /package="StreamBros"/);
     assert.match(config, /<access origin="\*"/);
     assert.throws(() => packageTizen({ www, out: join(dir, 'o2'), version: 'v1' }), /version/);
+});
+
+// ------------------------------------------------------------ AVPlay player
+
+class FakeEl {
+    constructor(tag) {
+        this.tagName = String(tag).toUpperCase();
+        this.style = {};
+        this.children = [];
+        this.attrs = {};
+        this.isConnected = false;
+        this.textContent = '';
+    }
+    appendChild(child) { child.isConnected = true; this.children.push(child); return child; }
+    setAttribute(k, v) { this.attrs[k] = String(v); }
+}
+
+function fakeAvplay(duration) {
+    const calls = [];
+    const av = { calls, listener: null, prepared: null, failed: null };
+    for (const name of ['open', 'setDisplayRect', 'setDisplayMethod', 'play', 'pause', 'stop', 'close', 'suspend', 'restore']) {
+        av[name] = (...args) => calls.push([name, ...args].join(':'));
+    }
+    av.setListener = (l) => { av.listener = l; calls.push('setListener'); };
+    av.prepareAsync = (ok, bad) => { av.prepared = ok; av.failed = bad; calls.push('prepareAsync'); };
+    av.getDuration = () => duration;
+    av.jumpForward = (ms, ok) => { calls.push('jumpForward:' + ms); av.seekDone = ok; };
+    av.jumpBackward = (ms, ok) => { calls.push('jumpBackward:' + ms); av.seekDone = ok; };
+    return av;
+}
+
+function runPlayer({ storage = memoryStorage(), duration = 0, withAvplay = true } = {}) {
+    const win = makeWindow({ storage });
+    const classes = new Set();
+    win.document = Object.assign(new EventTarget(), {
+        hidden: false,
+        head: new FakeEl('head'),
+        body: new FakeEl('body'),
+        documentElement: { classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c) } },
+        createElement: (tag) => new FakeEl(tag),
+    });
+    const av = fakeAvplay(duration);
+    if (withAvplay) win.webapis = { avplay: av };
+    const events = [];
+    win.tizen = { tvinputdevice: { registerKeyBatch: (keys) => events.push('keys:' + keys.join(',')) } };
+    vm.runInContext(ADAPTER_SRC, win);
+    vm.runInContext(PLAYER_SRC, win);
+    win.__tvShell = {
+        back: () => events.push('back'),
+        menu: () => events.push('menu'),
+        media: (a) => events.push('media:' + a),
+        setForeground: (on) => events.push('fg:' + on),
+    };
+    win.__tvNativeClosed = (zap) => events.push('closed:' + zap);
+    const open = (url) => win.TvShell.postMessage(JSON.stringify(['onSilentPlayback', url, 'Synthetic title']));
+    return { win, av, events, storage, classes, open };
+}
+
+const LIVE_URL = 'http://provider.example.test:8080/live/user/pass/101.ts';
+const MOVIE_URL = 'http://provider.example.test:8080/movie/user/pass/202.mkv';
+
+test('player: a handed-over stream opens full screen in AVPlay and hides the page', () => {
+    const { av, events, classes, open, win } = runPlayer({ duration: 5400000 });
+    open(MOVIE_URL);
+    assert.deepEqual(av.calls, ['open:' + MOVIE_URL, 'setListener', 'setDisplayRect:0:0:1920:1080',
+        'setDisplayMethod:PLAYER_DISPLAY_MODE_LETTER_BOX', 'prepareAsync']);
+    assert.ok(classes.has('sb-avplay-open'));
+    assert.deepEqual(events.filter((e) => e.startsWith('fg')), ['fg:false']);
+    av.prepared();
+    assert.equal(av.calls.at(-1), 'play');
+    const state = win.__streamBrosTizenPlayer.state();
+    assert.equal(state.live, false);
+    assert.equal(state.duration, 5400000);
+});
+
+test('player: Back closes it, gives the page back and does not reach tv.js', () => {
+    const { av, events, classes, open, win } = runPlayer({ duration: 5400000 });
+    open(MOVIE_URL);
+    av.prepared();
+    const ev = press(win, 10009);
+    assert.equal(ev.defaultPrevented, true);
+    assert.ok(av.calls.includes('stop') && av.calls.includes('close'));
+    assert.equal(classes.has('sb-avplay-open'), false);
+    assert.deepEqual(events.slice(-2), ['closed:0', 'fg:true']);
+    assert.equal(events.includes('back'), false);
+    assert.equal(win.__streamBrosTizenPlayer.isOpen(), false);
+    press(win, 10009); // closed: Back is tv.js's again
+    assert.equal(events.at(-1), 'back');
+});
+
+test('player: live TV changes channel with Up/Down and the channel keys', () => {
+    const { av, events, open, win } = runPlayer();
+    open(LIVE_URL);
+    av.prepared();
+    press(win, 38); // the info bar is up just after opening: Up only shows it
+    assert.equal(win.__streamBrosTizenPlayer.isOpen(), true);
+    win.__streamBrosTizenPlayer.state().bar = false;
+    press(win, 40);
+    assert.equal(events.at(-2), 'closed:1');
+    open(LIVE_URL);
+    av.prepared();
+    press(win, 428);
+    assert.equal(events.at(-2), 'closed:-1');
+    assert.ok(events[0].includes('ChannelUp,ChannelDown'));
+});
+
+test('player: movies seek with Left/Right; presses add up while AVPlay seeks', () => {
+    const { av, open, win } = runPlayer({ duration: 5400000 });
+    open(MOVIE_URL);
+    av.prepared();
+    av.listener.oncurrentplaytime(60000);
+    press(win, 39);
+    press(win, 39);
+    press(win, 37);
+    assert.deepEqual(av.calls.filter((c) => c.startsWith('jump')), ['jumpForward:10000']);
+    av.seekDone();
+    // +10 s, +10 s, -10 s: the two queued presses cancel out, so no second jump.
+    assert.deepEqual(av.calls.filter((c) => c.startsWith('jump')), ['jumpForward:10000']);
+    assert.equal(win.__streamBrosTizenPlayer.state().position, 70000);
+    press(win, 417);
+    assert.equal(av.calls.at(-1), 'jumpForward:30000');
+});
+
+test('player: OK shows the bar, then pauses; Play/Pause key toggles', () => {
+    const { av, open, win } = runPlayer({ duration: 5400000 });
+    open(MOVIE_URL);
+    av.prepared();
+    win.__streamBrosTizenPlayer.state().bar = false;
+    press(win, 13);
+    assert.equal(av.calls.includes('pause'), false);
+    press(win, 13);
+    assert.equal(av.calls.at(-1), 'pause');
+    press(win, 10252);
+    assert.equal(av.calls.at(-1), 'play');
+});
+
+test('player: a failed stream shows a message and Back still closes', () => {
+    const { av, events, open, win } = runPlayer();
+    open(LIVE_URL);
+    av.failed('PLAYER_ERROR_CONNECTION_FAILED');
+    assert.equal(win.__streamBrosTizenPlayer.state().error, true);
+    press(win, 40); // no channel change from the error screen
+    assert.equal(win.__streamBrosTizenPlayer.isOpen(), true);
+    press(win, 10009);
+    assert.deepEqual(events.slice(-2), ['closed:0', 'fg:true']);
+});
+
+test('player: a stale callback of the previous stream is ignored', () => {
+    const { av, open, win } = runPlayer();
+    open(LIVE_URL);
+    const oldPrepared = av.prepared;
+    open(MOVIE_URL);
+    oldPrepared();
+    assert.equal(win.__streamBrosTizenPlayer.state().loading, true);
+});
+
+test('player: AVPlay turns the built-in player back on, once', () => {
+    const storage = memoryStorage({ 'native-live': 'off', 'native-movies': 'off' }); // left by the first Samsung build
+    runPlayer({ storage });
+    assert.equal(storage.data['native-live'], undefined);
+    assert.equal(storage.data['native-movies'], undefined);
+    storage.setItem('native-live', 'off'); // the owner's own choice now stays
+    runPlayer({ storage });
+    assert.equal(storage.data['native-live'], 'off');
+});
+
+test('player: tizen-avplay=off (or no AVPlay) keeps the page player', () => {
+    for (const opts of [{ storage: memoryStorage({ 'tizen-avplay': 'off' }) }, { withAvplay: false }]) {
+        const { win, av, storage, open } = runPlayer(opts);
+        assert.equal(win.__streamBrosTizenPlayer, null);
+        assert.equal(storage.data['native-live'], 'off');
+        open(LIVE_URL);
+        assert.deepEqual(av.calls, []);
+    }
 });
