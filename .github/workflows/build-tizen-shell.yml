@@ -1,0 +1,145 @@
+name: Build Samsung TV app
+
+# Builds the StreamBros PWA, turns it into a Samsung (Tizen) app folder with
+# tv-shell/tizen/package.mjs and publishes it as a zip (workflow artifact and,
+# with `create_release`, the rolling pre-release `tizen-shell-latest`).
+# The zip is NOT signed: Samsung only installs apps signed with a certificate
+# that lists each TV's DUID, so signing happens on the owner's computer
+# (tv-shell/tizen/README.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: "Also refresh the tizen-shell-latest pre-release"
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - "tv-shell/tizen/**"
+      - "tv-shell/tests/tizen-shell.test.mjs"
+      - ".github/workflows/build-tizen-shell.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  SHELL_DIR: tv-shell
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      zip_name: ${{ steps.pkg.outputs.name }}
+      version: ${{ steps.pkg.outputs.version }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6.1.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # The Samsung checks need no dependencies: they run before the long build.
+      - name: Samsung adapter, in-page backend and packaging checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check "$SHELL_DIR/tizen/backend.js"
+          node --check "$SHELL_DIR/tizen/adapter.js"
+          node --check "$SHELL_DIR/android/app/src/main/assets/tvshell/tv.js"
+          node --test "$SHELL_DIR/tests/tizen-shell.test.mjs"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build the PWA
+        shell: bash
+        env:
+          NX_TASKS_RUNNER_DYNAMIC_OUTPUT: false
+          BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          node tools/build/inject-build-commit.mjs
+          pnpm nx build web --configuration=pwa --skip-nx-cache
+          test -f dist/apps/web/index.html
+
+      - name: Download the streaming-service lists
+        shell: bash
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: node "$SHELL_DIR/scripts/fetch-streaming-lists.mjs" dist/apps/web CA,US
+
+      - name: Package the Samsung app folder
+        id: pkg
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          # Same version as the Fire TV build; Tizen wants three numbers.
+          VERSION=$(grep -oP "versionName '\K[^']+" "$SHELL_DIR/android/app/build.gradle")
+          node "$SHELL_DIR/tizen/package.mjs" --www dist/apps/web --out dist/tizen-shell --version "$VERSION"
+          NAME="streambros-samsung-${VERSION}-${HEAD_SHA::7}.zip"
+          (cd dist/tizen-shell && zip -qr "../$NAME" .)
+          echo "Samsung app folder: $(du -sh dist/tizen-shell | cut -f1), $(find dist/tizen-shell -type f | wc -l) files"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the zip as a workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.pkg.outputs.name }}
+          path: dist/${{ steps.pkg.outputs.name }}
+          if-no-files-found: error
+
+  release:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the zip
+        uses: actions/download-artifact@v7
+        with:
+          name: ${{ needs.build.outputs.zip_name }}
+          path: dist
+
+      # Fixed address of the newest build:
+      # https://github.com/<owner>/<repo>/releases/download/tizen-shell-latest/streambros-samsung.zip
+      - name: Refresh the fixed "latest" link
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ZIP_NAME: ${{ needs.build.outputs.zip_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          cp "dist/${ZIP_NAME}" dist/streambros-samsung.zip
+          gh release delete tizen-shell-latest --cleanup-tag --yes 2>/dev/null || true
+          gh release create tizen-shell-latest dist/streambros-samsung.zip \
+            --target "$GITHUB_SHA" \
+            --prerelease --latest=false \
+            --title "Newest Samsung TV build (${VERSION}, build ${GITHUB_RUN_NUMBER})" \
+            --notes "Unsigned Samsung (Tizen) app folder. Sign and install it from your computer: see tv-shell/tizen/README.md."
+          for attempt in 1 2 3 4 5; do
+            if [ "$(gh release view tizen-shell-latest --json isDraft -q .isDraft)" = "false" ]; then break; fi
+            gh release edit tizen-shell-latest --draft=false --prerelease --latest=false || true
+            sleep 3
+          done
+          echo "Fixed link: https://github.com/${GITHUB_REPOSITORY}/releases/download/tizen-shell-latest/streambros-samsung.zip"
