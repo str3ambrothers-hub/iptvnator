@@ -14,6 +14,12 @@ on:
         description: "Also refresh the tizen-shell-latest pre-release"
         type: boolean
         default: false
+  # Samsung work lives on feat/tizen-* branches until the owner merges it, and
+  # workflow_dispatch only works once this file is on master: a push to such a
+  # branch builds it and refreshes the fixed link.
+  push:
+    branches:
+      - "feat/tizen-*"
   pull_request:
     paths:
       - "tv-shell/tizen/**"
@@ -106,7 +112,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.create_release }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.create_release) }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
