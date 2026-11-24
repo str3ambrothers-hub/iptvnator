@@ -215,6 +215,25 @@
                             }}</mat-error>
                         </mat-form-field>
                     }
+                    @if (playlist.serverUrl && !playlist.portalUrl) {
+                        <mat-form-field class="w-full">
+                            <mat-label>{{
+                                'HOME.XTREAM_PLAYLIST.BACKUP_SERVER_URL'
+                                    | translate
+                            }}</mat-label>
+                            <input
+                                matInput
+                                [value]="backupServerUrl"
+                                (change)="
+                                    onBackupServerChange($any($event.target).value)
+                                "
+                            />
+                            <mat-hint>{{
+                                'HOME.XTREAM_PLAYLIST.BACKUP_SERVER_HINT'
+                                    | translate
+                            }}</mat-hint>
+                        </mat-form-field>
+                    }
                     @if (!playlist.portalUrl) {
                         <ng-container
                             [ngTemplateOutlet]="providerCredentials"

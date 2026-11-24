@@ -1,6 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import {
     normalizeXtreamServerUrl,
+    withXtreamServerFailover,
     PlaylistMeta,
     XtreamCategory,
     XtreamContentType,
@@ -382,21 +383,39 @@ export class XtreamSelectedCatalogRefreshService {
         playlist: PlaylistMeta,
         action: string
     ): Promise<T[]> {
-        const response = await this.data.sendIpcEvent<{
-            type?: string;
-            payload?: unknown;
-        }>(XTREAM_REQUEST, {
-            url: normalizeXtreamServerUrl(playlist.serverUrl ?? ''),
-            ...(playlist.userAgent?.trim()
-                ? { userAgent: playlist.userAgent.trim() }
-                : {}),
-            params: {
-                username: playlist.username?.trim(),
-                password: playlist.password?.trim(),
-                action,
-            },
-        });
-        if (response?.type === 'ERROR' || !Array.isArray(response?.payload)) {
+        const response = await withXtreamServerFailover(
+            playlist.serverUrl ?? '',
+            async (serverUrl) => {
+                const reply = await this.data.sendIpcEvent<{
+                    type?: string;
+                    payload?: unknown;
+                    message?: string;
+                    status?: number;
+                }>(XTREAM_REQUEST, {
+                    url: normalizeXtreamServerUrl(serverUrl),
+                    ...(playlist.userAgent?.trim()
+                        ? { userAgent: playlist.userAgent.trim() }
+                        : {}),
+                    params: {
+                        username: playlist.username?.trim(),
+                        password: playlist.password?.trim(),
+                        action,
+                    },
+                });
+                // A bad gateway or no answer is worth trying the backup server for.
+                if (reply?.type === 'ERROR') {
+                    throw Object.assign(
+                        new Error(
+                            reply.message ??
+                                'The source did not return a valid catalog.'
+                        ),
+                        { status: reply.status }
+                    );
+                }
+                return reply;
+            }
+        );
+        if (!Array.isArray(response?.payload)) {
             throw new Error('The source did not return a valid catalog.');
         }
         return response.payload as T[];

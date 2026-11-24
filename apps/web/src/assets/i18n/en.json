@@ -292,6 +292,8 @@
             "CONTENT_TO_LOAD_HINT": "Only selected types are imported and refreshed. Select none to pause catalog loading; saved items and downloads are kept.",
             "TITLE": "Playlist title",
             "SERVER_URL": "Server URL",
+            "BACKUP_SERVER_URL": "Backup server URL (optional)",
+            "BACKUP_SERVER_HINT": "Used automatically if the main server gives a bad gateway or does not answer.",
             "USERNAME": "Username",
             "PASSWORD": "Password",
             "TEST_CREDENTIALS": "Test credentials",

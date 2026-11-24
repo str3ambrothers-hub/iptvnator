@@ -35,11 +35,13 @@ import {
     RuntimeCapabilitiesService,
 } from '@iptvnator/services';
 import {
+    getXtreamBackupServer,
     normalizeStalkerIdentityValue,
     normalizeStalkerMacAddress,
     normalizeXtreamContentTypes,
     Playlist,
     PlaylistMeta,
+    setXtreamBackupServer,
 } from '@iptvnator/shared/interfaces';
 import { PasswordVisibilityToggleDirective } from '@iptvnator/ui/components/password-visibility-toggle';
 import { RevealDetailsDirective } from '@iptvnator/ui/components/reveal-details';
@@ -135,6 +137,18 @@ export class PlaylistInfoComponent {
             normalizeStalkerIdentityValue(this.playlist.stalkerDeviceId1) ??
             normalizeStalkerIdentityValue(this.playlist.stalkerDeviceId2)
         );
+    }
+
+    /** The backup server of this Xtream login; kept apart from the saved playlist details. */
+    get backupServerUrl(): string {
+        return getXtreamBackupServer(this.playlist.serverUrl ?? '') ?? '';
+    }
+
+    /** Saved as soon as the field is left: an address that is not a web address is ignored. */
+    onBackupServerChange(value: string): void {
+        const trimmed = value.trim();
+        if (trimmed && !/^https?:\/\/\S+$/i.test(trimmed)) return;
+        setXtreamBackupServer(this.playlist.serverUrl ?? '', trimmed);
     }
 
     /**

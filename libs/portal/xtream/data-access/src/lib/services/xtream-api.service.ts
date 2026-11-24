@@ -13,6 +13,7 @@ import {
     XtreamVodStream,
     XTREAM_REQUEST,
     normalizeXtreamServerUrl,
+    withXtreamServerFailover,
 } from '@iptvnator/shared/interfaces';
 import { XtreamAccountInfo } from '../account-info/account-info.interface';
 
@@ -398,15 +399,31 @@ export class XtreamApiService {
     private async sendRequest<TResponse>(
         credentials: XtreamCredentials,
         params: Record<string, string | number>,
-        {
-            signal,
-            requestId,
-            sessionId,
-            suppressErrorLog,
-        }: XtreamRequestOptions = {}
+        options: XtreamRequestOptions = {}
+    ): Promise<TResponse> {
+        // Main server first; if it answers with a bad gateway or not at all, the backup server
+        // saved with the login (when there is one) gets the same request.
+        return withXtreamServerFailover(
+            credentials.serverUrl,
+            (serverUrl) =>
+                this.sendRequestTo<TResponse>(
+                    credentials,
+                    params,
+                    options,
+                    serverUrl
+                ),
+            options.signal
+        );
+    }
+
+    private async sendRequestTo<TResponse>(
+        credentials: XtreamCredentials,
+        params: Record<string, string | number>,
+        { signal, requestId, sessionId, suppressErrorLog }: XtreamRequestOptions,
+        serverUrl: string
     ): Promise<TResponse> {
         signal?.throwIfAborted();
-        const normalizedUrl = normalizeXtreamServerUrl(credentials.serverUrl);
+        const normalizedUrl = normalizeXtreamServerUrl(serverUrl);
         const userAgent = credentials.userAgent?.trim();
         const serializedParams: Record<string, string> = {
             username: credentials.username.trim(),

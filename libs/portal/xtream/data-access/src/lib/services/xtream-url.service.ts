@@ -1,5 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import {
+    activeXtreamServerUrl,
     formatXtreamCatchupStart,
     normalizeXtreamServerUrl,
     StreamFormat,
@@ -448,7 +449,10 @@ export class XtreamUrlService {
 
         let serverUrl: string;
         try {
-            serverUrl = normalizeXtreamServerUrl(credentials.serverUrl);
+            // The server that is working right now: the backup after the main one failed.
+            serverUrl = normalizeXtreamServerUrl(
+                activeXtreamServerUrl(credentials.serverUrl)
+            );
         } catch {
             return null;
         }

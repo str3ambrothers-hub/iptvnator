@@ -34,6 +34,7 @@ import {
     createRandomId,
     extractXtreamCredentialsFromUrl,
     normalizeXtreamServerUrl,
+    setXtreamBackupServer,
     XtreamContentType,
     XTREAM_CONTENT_TYPES,
     Playlist,
@@ -103,6 +104,11 @@ export class XtreamCodeImportComponent {
             Validators.pattern(this.URL_REGEX),
             xtreamServerUrlValidator,
         ]),
+        // Optional: used automatically when the main server gives a bad gateway or does not answer.
+        backupServerUrl: new FormControl('', [
+            Validators.pattern(this.URL_REGEX),
+            xtreamServerUrlValidator,
+        ]),
         importDate: new FormControl(new Date().toISOString()),
         xtreamContentTypes: new FormControl<XtreamContentType[]>(
             [...XTREAM_CONTENT_TYPES],
@@ -144,6 +150,7 @@ export class XtreamCodeImportComponent {
             username: '',
             userAgent: '',
             serverUrl: '',
+            backupServerUrl: '',
             importDate: new Date().toISOString(),
             xtreamContentTypes: [...XTREAM_CONTENT_TYPES],
         });
@@ -157,10 +164,13 @@ export class XtreamCodeImportComponent {
             return;
         }
 
+        const { backupServerUrl, ...playlistFields } = this.form.value;
+        setXtreamBackupServer(connection.serverUrl, backupServerUrl);
+
         this.store.dispatch(
             PlaylistActions.addPlaylist({
                 playlist: {
-                    ...this.form.value,
+                    ...playlistFields,
                     password: connection.password,
                     serverUrl: connection.serverUrl,
                     username: connection.username,
