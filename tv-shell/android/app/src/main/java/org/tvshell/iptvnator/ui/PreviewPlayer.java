@@ -2,6 +2,8 @@ package org.tvshell.iptvnator.ui;
 
 import android.content.Context;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -34,6 +36,8 @@ final class PreviewPlayer {
     private ExoPlayer player;
     private PlayerView view;
     private String url;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private Runnable report;
 
     PreviewPlayer(Context context, FrameLayout root) {
         this.context = context;
@@ -84,10 +88,26 @@ final class PreviewPlayer {
         player.setMediaItem(MediaItem.fromUri(Uri.parse(streamUrl)));
         player.setPlayWhenReady(true);
         player.prepare();
+        final ExoPlayer watched = player;
+        final int w = width, h = height, l = left, t = top;
+        if (report != null) handler.removeCallbacks(report);
+        report = new Runnable() {
+            @Override public void run() {
+                if (player != watched || view == null) return;
+                String state = new String[] {"?", "IDLE", "BUFFERING", "READY", "ENDED"}[Math.min(4, Math.max(0, watched.getPlaybackState()))];
+                androidx.media3.common.VideoSize vs = watched.getVideoSize();
+                String msg = "Preview " + state + (watched.isPlaying() ? " playing" : "") + " video " + vs.width + "x" + vs.height
+                    + " box " + w + "x" + h + "@" + l + "," + t + " view " + view.getWidth() + "x" + view.getHeight() + (view.isShown() ? " shown" : " hidden");
+                Log.i(ShellApp.TAG, msg);
+                Toast.makeText(context.getApplicationContext(), msg, Toast.LENGTH_LONG).show();
+            }
+        };
+        handler.postDelayed(report, 5000);
     }
 
     /** Removes the picture and frees the decoder and the provider connection. */
     void stop() {
+        if (report != null) handler.removeCallbacks(report);
         release();
         url = null;
         if (view != null) {
