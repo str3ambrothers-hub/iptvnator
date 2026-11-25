@@ -634,9 +634,31 @@ public class MainActivity extends Activity {
         super.onStop();
     }
 
+    private PreviewPlayer preview;
+
+    /**
+     * Rectangle in the page's CSS pixels; {@code pageWidth} is the page's window.innerWidth, so the
+     * scale to screen pixels holds whatever zoom or layout width the WebView uses.
+     */
+    void previewStart(String url, double left, double top, double width, double height, double pageWidth) {
+        if (webView == null || isFinishing() || !resumed || pageWidth < 1 || webView.getWidth() < 1) return;
+        double scale = webView.getWidth() / pageWidth;
+        left *= scale;
+        top *= scale;
+        width *= scale;
+        height *= scale;
+        if (preview == null) preview = new PreviewPlayer(this, root);
+        preview.start(url, (int) Math.round(left), (int) Math.round(top), (int) Math.round(width), (int) Math.round(height));
+    }
+
+    void previewStop() {
+        if (preview != null) preview.stop();
+    }
+
     void offerForSilence(final String url, final String title) {
         if (url == null || url.isEmpty() || webView == null || isFinishing()) return;
         if (externalDialog != null && externalDialog.isShowing()) return;
+        previewStop();
         String preferred = prefs.externalPlayerPackage();
         if (preferred == null || preferred.isEmpty() || ExternalPlayer.CHOOSER.equals(preferred)) {
             pauseWebForPlayer = true;
@@ -746,6 +768,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onPause() {
         resumed = false;
+        previewStop();
         handler.removeCallbacks(readyWatchdog); // startup time in the background does not count
         if (webView != null) {
             lastRoute = pageReady ? webView.getUrl() : null;
@@ -798,6 +821,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        previewStop();
         fileChooser.cancel();
         handler.removeCallbacks(readyWatchdog);
         handler.removeCallbacks(loadRetry);

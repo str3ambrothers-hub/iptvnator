@@ -1629,6 +1629,63 @@
                 return fetchFn.apply(this, arguments);
             };
         }
+        /**
+         * Small live picture in the programme guide's corner (drawn by the app over the page).
+         * First select on a channel: the page tunes it, the stream is shown there instead of full
+         * screen. Second select on the same channel: the same stream goes to the full-screen player.
+         * Kill switch: localStorage['guide-preview'] = 'off'.
+         */
+        var previewWanted = 0, previewActive = null, previewTimer = 0, previewWatch = 0;
+        function previewOn() { return nativeLiveOn() && !killSwitchOff('guide-preview'); }
+        api.previewCapable = function () { return previewOn(); };
+        api.previewShowing = function () { return !!previewActive; };
+        function previewEnded() {
+            previewActive = null;
+            clearInterval(previewWatch);
+            try { document.dispatchEvent(new CustomEvent('tv-guide-preview-ended')); } catch (err) { /* ignore */ }
+        }
+        function stopPreview() {
+            if (!previewActive) return;
+            native('previewStop');
+            previewEnded();
+        }
+        function startPreview(v, url) {
+            var box = document.querySelector('[data-tv-preview]');
+            var r = box && box.getBoundingClientRect();
+            if (!r || r.width < 8 || r.height < 8) return false;
+            if (v) { try { v.pause(); } catch (err) { /* ignore */ } releasePageStream(v); }
+            previewWanted = 0;
+            previewActive = { url: url, title: document.title || '' };
+            native('previewStart', url, r.left, r.top, r.width, r.height, window.innerWidth);
+            clearInterval(previewWatch);
+            // The corner picture goes when the guide does.
+            previewWatch = setInterval(function () {
+                var b = document.querySelector('[data-tv-preview]');
+                if (!b || !isVisible(b)) stopPreview();
+            }, 400);
+            return true;
+        }
+        document.addEventListener('tv-guide-select', function (e) {
+            var intent = e && e.detail && e.detail.intent;
+            clearTimeout(previewTimer);
+            if (intent === 'preview' && previewOn()) {
+                previewWanted = Date.now();
+                // A channel that is already the active one may not play again: use what is current.
+                previewTimer = setTimeout(function () {
+                    if (!previewWanted || Date.now() - previewWanted > 4000) return;
+                    var v = currentVideo || document.querySelector('video');
+                    var url = (v && (realMediaUrl(v.currentSrc) || realMediaUrl(v.getAttribute('src')))) || api.currentStreamUrl();
+                    if (url && document.querySelector('.epg-guide-row.is-active')) startPreview(v, url);
+                }, 1500);
+                return;
+            }
+            previewWanted = 0;
+            if (intent === 'commit' && previewActive) {
+                var url = previewActive.url;
+                stopPreview();
+                if (claimNative(url)) handOff(currentVideo || document.createElement('video'), url);
+            }
+        });
         document.addEventListener('play', function (e) {
             var t = e.target;
             if (t && (t.tagName === 'VIDEO' || t.tagName === 'AUDIO')) {
@@ -1637,6 +1694,7 @@
                 noteMediaUrl(t.currentSrc || t.getAttribute('src'), null, true);
                 lastMediaTitle = document.title;
                 var startUrl = realMediaUrl(t.currentSrc) || realMediaUrl(t.getAttribute('src')) || api.currentStreamUrl();
+                if (t.tagName === 'VIDEO' && previewWanted && Date.now() - previewWanted < 8000 && previewOn() && startUrl && startPreview(t, startUrl)) return;
                 if (t.tagName === 'VIDEO' && (nativeLiveOn() || (nativeMoviesOn() && isVodUrl(startUrl))) && claimNative(startUrl)) {
                     handOff(t, startUrl);
                 }
@@ -1692,6 +1750,7 @@
         }
         /** The built-in player closed: drop the cover; close the page's player if it is still there. */
         window.__tvNativeClosed = function (zap) {
+            if (previewActive) previewEnded(); // the app dropped the corner picture when it paused
             // Channel up/down in the built-in player: play the next channel of the guide.
             if (zap) setTimeout(function () { zapChannel(zap > 0 ? 1 : -1); }, 150);
             guideReturnFocus(zap ? 900 : 250);

@@ -21,6 +21,25 @@ $ruler-height: 34px;
     z-index: 20;
 }
 
+// TV app: a 16:9 box in the top-right corner for the small live picture. The
+// toolbar keeps clear of it and the head is as tall as the box.
+:host(.has-preview) .epg-guide__head {
+    min-height: 170px;
+    padding-right: 320px;
+}
+
+.epg-guide__preview {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 296px;
+    height: 166px;
+    background: #000;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    pointer-events: none;
+}
+
 .epg-guide__grid {
     position: relative;
     flex: 1;

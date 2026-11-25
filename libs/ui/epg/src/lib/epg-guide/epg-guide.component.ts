@@ -43,6 +43,7 @@ import {
 } from './epg-guide-programs.service';
 import { EpgGuideRowComponent } from './epg-guide-row.component';
 import { createEpgGuideRowActivation } from './epg-guide-row-activation';
+import { epgGuidePreviewCapable } from './epg-guide-tv-preview';
 import { EpgGuideSearchController } from './epg-guide-search.controller';
 import {
     EPG_GUIDE_SOURCE,
@@ -75,6 +76,7 @@ import { EpgGuideViewportController } from './epg-guide-viewport.controller';
     templateUrl: './epg-guide.component.html',
     styleUrl: './epg-guide.component.scss',
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: { '[class.has-preview]': 'tvPreview' },
 })
 export class EpgGuideComponent implements OnDestroy {
     private readonly source = inject(EPG_GUIDE_SOURCE);
@@ -87,6 +89,8 @@ export class EpgGuideComponent implements OnDestroy {
     private readonly changeDetector = inject(ChangeDetectorRef);
     private readonly hostElement = inject<ElementRef<HTMLElement>>(ElementRef);
 
+    /** TV app: room in the top-right corner for the small live picture the shell draws there. */
+    readonly tvPreview = epgGuidePreviewCapable();
     readonly close = output<void>();
     /**
      * Fired after `source.activate()` for hosts that want to observe a

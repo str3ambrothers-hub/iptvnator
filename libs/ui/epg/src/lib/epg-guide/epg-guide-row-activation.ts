@@ -1,4 +1,5 @@
 import type { EpgGuideChannel, EpgGuideSource } from './epg-guide-source';
+import { decideEpgGuideSelect } from './epg-guide-tv-preview';
 
 /** Coordinates preview clicks and commits from the keyboard or a double-click. */
 export function createEpgGuideRowActivation(
@@ -43,6 +44,13 @@ export function createEpgGuideRowActivation(
     ): void => {
         pointerTune = undefined;
         if (!channel) return;
+        // TV app: first select shows the channel in the corner, the second goes full screen.
+        const select = decideEpgGuideSelect(channel.id);
+        if (select === 'preview') {
+            activate(channel, undefined, false);
+            return;
+        }
+        if (select === 'commit') return; // the shell opens the full-screen player itself
         const confirmed = source.closeOnPlaybackConfirmation
             ? close
             : undefined;

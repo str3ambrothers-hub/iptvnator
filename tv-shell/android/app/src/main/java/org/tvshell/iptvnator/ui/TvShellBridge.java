@@ -47,6 +47,14 @@ final class TvShellBridge {
                 if (silentUrl == null || silentTitle == null) return;
                 activity.offerForSilence(silentUrl, silentTitle);
                 break;
+            case "previewStart":
+                String previewUrl = stringAt(args, 1);
+                if (previewUrl == null || args.size() < 6) return;
+                activity.previewStart(previewUrl, numberAt(args, 2), numberAt(args, 3), numberAt(args, 4), numberAt(args, 5), numberAt(args, 6));
+                break;
+            case "previewStop":
+                activity.previewStop();
+                break;
             case "setKeepScreenOn":
                 if (args.size() > 1 && args.get(1) instanceof Boolean) {
                     activity.setKeepScreenOn((Boolean) args.get(1));
@@ -72,6 +80,10 @@ final class TvShellBridge {
                 activity.openSettings();
                 break;
         }
+    }
+
+    private static double numberAt(List<?> args, int index) {
+        return index < args.size() && args.get(index) instanceof Number ? ((Number) args.get(index)).doubleValue() : 0;
     }
 
     private static String stringAt(List<?> args, int index) {

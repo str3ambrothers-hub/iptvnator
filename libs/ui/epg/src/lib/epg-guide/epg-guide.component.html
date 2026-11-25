@@ -1,6 +1,10 @@
 <!-- The toolbar wraps in narrow windows, so the search results hang off
      its real height rather than a hard-coded one. -->
 <div class="epg-guide__head">
+    @if (tvPreview) {
+        <!-- The app draws the live picture over this box (see tv.js). -->
+        <div class="epg-guide__preview" data-tv-preview aria-hidden="true"></div>
+    }
     <app-epg-guide-toolbar
         [dayMs]="view.axis().startMs"
         [isToday]="view.isToday()"

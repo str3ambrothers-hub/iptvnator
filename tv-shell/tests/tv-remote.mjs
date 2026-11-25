@@ -1619,6 +1619,12 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     check(epgOn, 'the "Only with EPG" toggle starts on in the TV app');
     check(toggle && toggle[0] > 10 && toggle[1] > 10, 'the "Only with EPG" toggle is big enough for the remote to focus: ' + JSON.stringify(toggle));
     check(guide.rows > 0, 'the guide lists channel rows: ' + guide.rows);
+    // The corner preview only exists in the Android app: in a browser the guide is unchanged.
+    const previewInfo = await page.evaluate(() => ({
+        capable: window.__tvShell?.previewCapable?.(),
+        box: !!document.querySelector('[data-tv-preview]'),
+    }));
+    check(previewInfo.capable === false && !previewInfo.box, 'no corner preview outside the Android app: ' + JSON.stringify(previewInfo));
     check(guide.hiddenPlayer, 'the page player is not shown in the guide');
     // The selection box and the guide's own selection stay on the same channel, and OK plays it.
     await page.evaluate(() => document.querySelectorAll('.epg-guide-row__channel')[1]?.focus());
