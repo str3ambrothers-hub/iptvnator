@@ -2,12 +2,20 @@ package org.tvshell.iptvnator.ui;
 
 import android.content.Context;
 import android.net.Uri;
+import android.util.Log;
 import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.widget.Toast;
+
+import org.tvshell.iptvnator.R;
+import org.tvshell.iptvnator.ShellApp;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
+import androidx.media3.common.Player;
 import androidx.media3.datasource.DefaultHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
@@ -38,7 +46,8 @@ final class PreviewPlayer {
         boolean same = streamUrl.equals(url) && player != null;
         url = streamUrl;
         if (view == null) {
-            view = new PlayerView(context);
+            // A TextureView surface: it draws in the view tree, so it shows over the WebView.
+            view = (PlayerView) LayoutInflater.from(context).inflate(R.layout.preview_player_view, null);
             view.setUseController(false);
             view.setFocusable(false);
             view.setFocusableInTouchMode(false);
@@ -64,6 +73,13 @@ final class PreviewPlayer {
         player = new ExoPlayer.Builder(context)
             .setMediaSourceFactory(new DefaultMediaSourceFactory(context).setDataSourceFactory(http))
             .build();
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                Log.w(ShellApp.TAG, "preview failed: " + error.getErrorCodeName() + " " + streamUrl.replaceAll("//[^/]*/.*", "//…"));
+                Toast.makeText(context.getApplicationContext(), "Preview: " + error.getErrorCodeName(), Toast.LENGTH_LONG).show();
+            }
+        });
         view.setPlayer(player);
         player.setMediaItem(MediaItem.fromUri(Uri.parse(streamUrl)));
         player.setPlayWhenReady(true);

@@ -1656,6 +1656,7 @@
             if (v) { try { v.pause(); } catch (err) { /* ignore */ } releasePageStream(v); }
             previewWanted = 0;
             previewActive = { url: url, title: document.title || '' };
+            native('toast', 'Preview: ' + (String(url).split('?')[0].split('.').pop() || '?').slice(0, 5));
             native('previewStart', url, r.left, r.top, r.width, r.height, window.innerWidth);
             clearInterval(previewWatch);
             // The corner picture goes when the guide does.
@@ -1675,7 +1676,8 @@
                     if (!previewWanted || Date.now() - previewWanted > 4000) return;
                     var v = currentVideo || document.querySelector('video');
                     var url = (v && (realMediaUrl(v.currentSrc) || realMediaUrl(v.getAttribute('src')))) || api.currentStreamUrl();
-                    if (url && document.querySelector('.epg-guide-row.is-active')) startPreview(v, url);
+                    if (url && document.querySelector('.epg-guide-row.is-active')) { if (!startPreview(v, url)) native('toast', 'Preview: no picture box'); }
+                    else native('toast', 'Preview: no stream found yet');
                 }, 1500);
                 return;
             }
