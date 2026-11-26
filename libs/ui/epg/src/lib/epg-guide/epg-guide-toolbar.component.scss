@@ -289,3 +289,12 @@
         flex-basis: 160px;
     }
 }
+
+// TV app: the remote drives the guide with OK/Back, so the extra controls are hidden
+// (switch: localStorage['guide-trim'] = 'off').
+:host-context(html.tv-shell:not(.guide-trim-off)) .guide-toolbar__day,
+:host-context(html.tv-shell:not(.guide-trim-off)) .guide-toolbar__now,
+:host-context(html.tv-shell:not(.guide-trim-off)) .guide-toolbar__scope,
+:host-context(html.tv-shell:not(.guide-trim-off)) .guide-toolbar__input {
+    display: none !important;
+}

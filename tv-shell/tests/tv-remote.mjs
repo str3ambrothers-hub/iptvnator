@@ -1619,6 +1619,9 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     check(epgOn, 'the "Only with EPG" toggle starts on in the TV app');
     check(toggle && toggle[0] > 10 && toggle[1] > 10, 'the "Only with EPG" toggle is big enough for the remote to focus: ' + JSON.stringify(toggle));
     check(guide.rows > 0, 'the guide lists channel rows: ' + guide.rows);
+    const trimmed = await page.evaluate(() => ['.guide-toolbar__day', '.guide-toolbar__now', '.guide-toolbar__scope', '.guide-toolbar__input', '.now-playing__actions']
+        .map((q) => [q, [...document.querySelectorAll(q)].filter((el) => el.getBoundingClientRect().width > 0).length]).filter((x) => x[1] > 0));
+    check(trimmed.length === 0, 'the guide hides the day/Now/category row, the search boxes and the close/collapse buttons: ' + JSON.stringify(trimmed));
     // The corner preview only exists in the Android app: in a browser the guide is unchanged.
     const previewInfo = await page.evaluate(() => ({
         capable: window.__tvShell?.previewCapable?.(),

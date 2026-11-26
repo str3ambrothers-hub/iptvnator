@@ -143,3 +143,9 @@ kbd {
     margin-left: 6px;
     color: $text-secondary;
 }
+
+// TV app: the remote drives the guide with OK/Back, so the extra controls are hidden
+// (switch: localStorage['guide-trim'] = 'off').
+:host-context(html.tv-shell:not(.guide-trim-off)) .now-playing__actions {
+    display: none !important;
+}

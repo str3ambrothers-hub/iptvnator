@@ -2337,6 +2337,7 @@
     // ------------------------------------------------------------- init
     function init() {
         document.documentElement.classList.add('tv-shell');
+        if (killSwitchOff('guide-trim')) document.documentElement.classList.add('guide-trim-off');
         if (isAndroid) document.documentElement.classList.add('android-tv-shell');
         document.body.classList.add('tv-shell');
         installStyle();
