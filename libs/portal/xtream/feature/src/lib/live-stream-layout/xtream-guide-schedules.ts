@@ -20,6 +20,30 @@ type ScheduleRevision = {
 };
 const EMPTY: XtreamGuideSchedule = { items: [], programs: [] };
 
+/** Retry failed or empty schedule loads. Kill switch: localStorage['guide-epg-retry'] = 'off'. */
+function guideRetryEnabled(): boolean {
+    try {
+        return globalThis.localStorage?.getItem('guide-epg-retry') !== 'off';
+    } catch {
+        return true;
+    }
+}
+
+function pauseFor(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (signal.aborted) return reject(signal.reason);
+        const timer = setTimeout(() => {
+            signal.removeEventListener('abort', onAbort);
+            resolve();
+        }, ms);
+        const onAbort = () => {
+            clearTimeout(timer);
+            reject(signal.reason);
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
 export function scheduleKey(item: XtreamLiveChannelItem): string {
     return `${item.xtream_id}:${item.epg_channel_id ?? ''}`;
 }
@@ -102,13 +126,31 @@ export function injectXtreamGuideSchedules(
                 key,
                 checkCurrent,
                 async (options) => {
-                    const items = await fullEpg.load(
-                        playlist,
-                        item.xtream_id,
-                        item.epg_channel_id ?? null,
-                        options
-                    );
-                    return { items, programs: items.map(toSharedEpgProgram) };
+                    const retry = guideRetryEnabled();
+                    for (let attempt = 0; ; attempt++) {
+                        try {
+                            const items = await fullEpg.load(
+                                playlist,
+                                item.xtream_id,
+                                item.epg_channel_id ?? null,
+                                options
+                            );
+                            // A throttled provider can answer "nothing" for a channel that has a
+                            // schedule: ask once more for the rows on screen (not the background scan).
+                            if (retry && !items.length && !background && attempt < 1) {
+                                await pauseFor(900, options.signal);
+                                continue;
+                            }
+                            return {
+                                items,
+                                programs: items.map(toSharedEpgProgram),
+                            };
+                        } catch (error) {
+                            options.signal.throwIfAborted();
+                            if (!retry || attempt >= 2) throw error;
+                            await pauseFor(800 * (attempt + 1), options.signal);
+                        }
+                    }
                 },
                 signal,
                 background
