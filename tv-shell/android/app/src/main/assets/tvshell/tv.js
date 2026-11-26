@@ -1662,7 +1662,8 @@
             // The corner picture goes when the guide does.
             previewWatch = setInterval(function () {
                 var b = document.querySelector('[data-tv-preview]');
-                if (!b || !isVisible(b)) stopPreview();
+                var br = b && b.isConnected && b.getBoundingClientRect(); // not isVisible(): the box is aria-hidden on purpose
+                if (!br || br.width < 8 || br.height < 8) stopPreview();
             }, 400);
             return true;
         }
