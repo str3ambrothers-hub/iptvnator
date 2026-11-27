@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -33,7 +34,7 @@ public final class XmltvGuide {
     /** What was kept from one file. */
     public static final class Snapshot {
         private final Map<String, ByteArrayOutputStream> channels = new HashMap<String, ByteArrayOutputStream>();
-        private final Map<String, Integer> counts = new HashMap<String, Integer>();
+        private final Map<String, String> nameIndex = new HashMap<String, String>();
         private long bytes;
         public final long builtAtMs;
         /** The kept part hit the cap, so some programmes are missing. */
@@ -61,6 +62,26 @@ public final class XmltvGuide {
                 if (!first) out.append(',');
                 first = false;
                 Json.write(id, out);
+                out.append(":[").append(new String(kept.toByteArray(), UTF8)).append(']');
+            }
+        }
+
+        /** Remembers a channel's name (and id) so a playlist channel can be matched by name. */
+        void addName(String channelId, String name) {
+            String normalized = normName(name);
+            if (normalized.length() >= 3 && !nameIndex.containsKey(normalized)) nameIndex.put(normalized, channelId);
+        }
+
+        /** Appends {@code "name":[...]} entries for playlist names that match a kept channel by name. */
+        public void writeByName(List<String> names, StringBuilder out) {
+            boolean first = true;
+            for (String name : names) {
+                String id = nameIndex.get(normName(name));
+                ByteArrayOutputStream kept = id == null ? null : channels.get(key(id));
+                if (kept == null) continue;
+                if (!first) out.append(',');
+                first = false;
+                Json.write(name, out);
                 out.append(":[").append(new String(kept.toByteArray(), UTF8)).append(']');
             }
         }
@@ -95,6 +116,22 @@ public final class XmltvGuide {
     private XmltvGuide() {
     }
 
+    /** Words that differ between a playlist's channel names and the guide's, dropped before comparing. */
+    private static final java.util.Set<String> NAME_NOISE = new java.util.HashSet<String>(Arrays.asList(
+        "hd", "fhd", "uhd", "sd", "4k", "hevc", "h265", "h264", "usa", "us", "ca", "can", "canada", "uk"));
+
+    /** Lower case, brackets and noise words and everything but letters and digits removed. */
+    static String normName(String raw) {
+        if (raw == null) return "";
+        String s = raw.toLowerCase(Locale.ROOT).replaceAll("[\\[(].*?[\\])]", " ");
+        StringBuilder out = new StringBuilder();
+        for (String token : s.split("[^\\p{L}\\p{Nd}]+")) {
+            if (token.isEmpty() || NAME_NOISE.contains(token)) continue;
+            out.append(token);
+        }
+        return out.toString();
+    }
+
     static String key(String channelId) {
         return channelId == null ? "" : channelId.trim().toLowerCase(Locale.ROOT);
     }
@@ -110,10 +147,17 @@ public final class XmltvGuide {
             private boolean keep;
             private String title;
             private String desc;
+            private String channelDef;
+            private StringBuilder nameText;
 
             @Override
             public void startElement(String uri, String localName, String qName, Attributes attrs) {
-                if ("programme".equals(qName)) {
+                if ("channel".equals(qName)) {
+                    channelDef = attrs.getValue("id");
+                    if (channelDef != null) snapshot.addName(channelDef, channelDef.replaceAll("\\.[A-Za-z]{2,3}\\d*$", ""));
+                } else if (channelDef != null && "display-name".equals(qName)) {
+                    nameText = new StringBuilder();
+                } else if ("programme".equals(qName)) {
                     channel = attrs.getValue("channel");
                     start = parseTime(attrs.getValue("start"));
                     stop = parseTime(attrs.getValue("stop"));
@@ -131,12 +175,19 @@ public final class XmltvGuide {
 
             @Override
             public void characters(char[] ch, int begin, int length) {
+                if (nameText != null && nameText.length() < 200) nameText.append(ch, begin, length);
                 if (text != null && text.length() < MAX_DESC + 64) text.append(ch, begin, length);
             }
 
             @Override
             public void endElement(String uri, String localName, String qName) {
-                if (text != null && "title".equals(qName) && title == null) {
+                if ("channel".equals(qName)) {
+                    channelDef = null;
+                    nameText = null;
+                } else if (nameText != null && "display-name".equals(qName)) {
+                    if (channelDef != null) snapshot.addName(channelDef, nameText.toString());
+                    nameText = null;
+                } else if (text != null && "title".equals(qName) && title == null) {
                     title = clip(text.toString(), MAX_TITLE);
                     text = null;
                 } else if (text != null && "desc".equals(qName) && desc == null) {

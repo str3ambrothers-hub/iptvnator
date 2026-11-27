@@ -301,7 +301,12 @@ public class WebBackend {
             if (joined != null && !joined.isEmpty()) {
                 for (String id : joined.split(",")) if (!id.isEmpty()) ids.add(id);
             }
-            payload = guideStore.read(ids);
+            List<String> names = new ArrayList<String>();
+            String joinedNames = query.get("names");
+            if (joinedNames != null && !joinedNames.isEmpty()) {
+                for (String name : joinedNames.split("\t")) if (!name.isEmpty()) names.add(name);
+            }
+            payload = guideStore.read(ids, names);
         }
         Map<String, Object> out = Json.object();
         out.put("action", action);

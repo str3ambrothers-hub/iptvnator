@@ -121,6 +121,11 @@ public final class XmltvGuideStore {
 
     /** {@code state()} plus the kept programmes of {@code ids}, as {@code "channels": {...}}. */
     public Map<String, Object> read(List<String> ids) {
+        return read(ids, null);
+    }
+
+    /** Also {@code "byName"}: kept programmes of playlist channels that match a guide channel by name. */
+    public Map<String, Object> read(List<String> ids, List<String> names) {
         Map<String, Object> out = state();
         XmltvGuide.Snapshot current;
         synchronized (lock) {
@@ -131,6 +136,12 @@ public final class XmltvGuideStore {
             current.write(ids, body);
             body.append('}');
             out.put("channels", new Json.Raw(body.toString()));
+            if (names != null && !names.isEmpty()) {
+                StringBuilder byName = new StringBuilder("{");
+                current.writeByName(names, byName);
+                byName.append('}');
+                out.put("byName", new Json.Raw(byName.toString()));
+            }
         }
         return out;
     }

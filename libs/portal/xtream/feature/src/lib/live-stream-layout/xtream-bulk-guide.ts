@@ -4,6 +4,15 @@ import type {
 } from '@iptvnator/portal/xtream/data-access';
 import type { EpgItem } from '@iptvnator/shared/interfaces';
 
+/** Matching channels by name when their id is not in the file. Switch: localStorage['guide-bulk-names'] = 'off'. */
+function nameMatchEnabled(): boolean {
+    try {
+        return localStorage.getItem('guide-bulk-names') !== 'off';
+    } catch {
+        return true;
+    }
+}
+
 /** TV app only. Kill switch: localStorage['guide-bulk'] = 'off'. */
 export function bulkGuideEnabled(): boolean {
     try {
@@ -23,6 +32,8 @@ const RETRY_AFTER_FAILURE_MS = 2 * 60_000;
 const MEMO_MS = 20 * 60_000;
 
 type Row = readonly [number, number, string, string];
+/** A channel of the scope: its guide id and its name (for matching by name when the id is not in the file). */
+export type BulkScopeEntry = { epg: string | null | undefined; name: string | undefined };
 
 const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
 
@@ -75,8 +86,9 @@ export class XtreamBulkGuide {
     async lookup(
         credentials: XtreamCredentials,
         epgChannelId: string | null | undefined,
-        scope: () => readonly (string | null | undefined)[],
-        background: boolean
+        scope: () => readonly BulkScopeEntry[],
+        background: boolean,
+        channelName?: string
     ): Promise<EpgItem[] | undefined> {
         const id = epgChannelId?.trim();
         if (!id || !bulkGuideEnabled() || Date.now() < this.failedUntil) return undefined;
@@ -85,7 +97,7 @@ export class XtreamBulkGuide {
         if (Date.now() - this.memoAt > MEMO_MS) this.expire(credentials);
         const key = id.toLowerCase();
         if (!this.memo.has(key) && !this.absent.has(key)) {
-            await (this.loading.get(key) ?? this.fill(credentials, id, scope()));
+            await (this.loading.get(key) ?? this.fill(credentials, { epg: id, name: channelName }, scope()));
         }
         void this.prefetch(credentials, scope());
         const found = this.memo.get(key);
@@ -149,38 +161,62 @@ export class XtreamBulkGuide {
     /** Loads `first` plus the next channels of the same scope that are not loaded yet. */
     private fill(
         credentials: XtreamCredentials,
-        first: string,
-        scope: readonly (string | null | undefined)[]
+        first: BulkScopeEntry,
+        scope: readonly BulkScopeEntry[]
     ): Promise<void> {
-        const ids = [first];
+        const firstKey = first.epg?.trim().toLowerCase();
+        const entries: BulkScopeEntry[] = [first];
         for (const candidate of scope) {
-            if (ids.length >= CHUNK) break;
-            const id = candidate?.trim();
-            if (!id) continue;
-            const key = id.toLowerCase();
-            if (key === first.toLowerCase() || this.memo.has(key) || this.absent.has(key) || this.loading.has(key)) continue;
-            ids.push(id);
+            if (entries.length >= CHUNK) break;
+            const key = candidate.epg?.trim().toLowerCase();
+            if (!key || key === firstKey || this.memo.has(key) || this.absent.has(key) || this.loading.has(key)) continue;
+            entries.push(candidate);
         }
-        const work = this.read(credentials, ids).finally(() => {
-            for (const id of ids) this.loading.delete(id.toLowerCase());
+        const work = this.read(credentials, entries).finally(() => {
+            for (const entry of entries) {
+                const key = entry.epg?.trim().toLowerCase();
+                if (key) this.loading.delete(key);
+            }
         });
-        for (const id of ids) this.loading.set(id.toLowerCase(), work);
+        for (const entry of entries) {
+            const key = entry.epg?.trim().toLowerCase();
+            if (key) this.loading.set(key, work);
+        }
         return work;
     }
 
-    private async read(credentials: XtreamCredentials, ids: string[]): Promise<void> {
+    private async read(credentials: XtreamCredentials, entries: BulkScopeEntry[]): Promise<void> {
         try {
+            const api = this.api();
             this.requests++;
-            const reply = await this.api().xmltvGuide(credentials, 'xmltv_guide_read', ids);
+            const ids = entries.map((entry) => entry.epg!.trim());
+            const reply = await api.xmltvGuide(credentials, 'xmltv_guide_read', ids);
             if (reply?.state !== 'ready') return;
             this.truncated = !!reply.truncated;
-            const channels = reply.channels ?? {};
-            const byKey = new Map(Object.entries(channels).map(([id, rows]) => [id.toLowerCase(), { id, rows }]));
-            for (const id of ids) {
-                const key = id.toLowerCase();
-                const hit = byKey.get(key);
-                if (hit) this.memo.set(key, hit.rows.map((row) => toItem(hit.id, row)));
-                else this.absent.add(key);
+            const byKey = new Map(
+                Object.entries(reply.channels ?? {}).map(([id, rows]) => [id.toLowerCase(), { id, rows }])
+            );
+            const missing: BulkScopeEntry[] = [];
+            for (const entry of entries) {
+                const id = entry.epg!.trim();
+                const hit = byKey.get(id.toLowerCase());
+                if (hit) this.memo.set(id.toLowerCase(), hit.rows.map((row) => toItem(hit.id, row)));
+                else missing.push(entry);
+            }
+            // Not under that id in the file: try the channel's name (a playlist can name a channel
+            // "USA Go Traveler" where the file has "Go Traveler" under another id).
+            const named = missing.filter((entry) => entry.name?.trim());
+            let byName: NonNullable<typeof reply.byName> = {};
+            if (named.length && nameMatchEnabled()) {
+                this.requests++;
+                const second = await api.xmltvGuide(credentials, 'xmltv_guide_read', [], undefined, named.map((entry) => entry.name!.trim()));
+                byName = second?.byName ?? {};
+            }
+            for (const entry of missing) {
+                const id = entry.epg!.trim();
+                const rows = entry.name ? byName[entry.name.trim()] : undefined;
+                if (rows) this.memo.set(id.toLowerCase(), rows.map((row) => toItem(id, row)));
+                else this.absent.add(id.toLowerCase());
             }
         } catch {
             this.failedUntil = Date.now() + RETRY_AFTER_FAILURE_MS;
@@ -190,21 +226,34 @@ export class XtreamBulkGuide {
     /** Works through the rest of the scope in the background, so lookups find it ready. */
     private async prefetch(
         credentials: XtreamCredentials,
-        scope: readonly (string | null | undefined)[]
+        scope: readonly BulkScopeEntry[]
     ): Promise<void> {
         if (this.prefetching || this.state !== 'ready') return;
         this.prefetching = true;
         try {
             for (const candidate of scope) {
-                const id = candidate?.trim();
-                if (!id) continue;
-                const key = id.toLowerCase();
+                const key = candidate.epg?.trim().toLowerCase();
+                if (!key) continue;
                 if (this.memo.has(key) || this.absent.has(key) || this.loading.has(key)) continue;
                 if (Date.now() < this.failedUntil || this.state !== 'ready') return;
-                await this.fill(credentials, id, scope);
+                await this.fill(credentials, candidate, scope);
             }
         } finally {
             this.prefetching = false;
+        }
+    }
+
+    /**
+     * Resolves once the guide file is ready or has failed (or after `waitMs`), so the "has a guide"
+     * scan does not judge channels by the slow per-channel answers while the file is still coming.
+     */
+    async settled(credentials: XtreamCredentials, signal?: AbortSignal, waitMs = 90_000): Promise<void> {
+        if (!bulkGuideEnabled() || Date.now() < this.failedUntil) return;
+        this.ensure(credentials);
+        const began = Date.now();
+        while (this.state === 'starting' && Date.now() - began < waitMs) {
+            signal?.throwIfAborted();
+            await new Promise((resolve) => setTimeout(resolve, 300));
         }
     }
 }

@@ -76,6 +76,8 @@ export interface XtreamXmltvGuideReply {
     truncated?: boolean;
     error?: string;
     channels?: Record<string, ReadonlyArray<readonly [number, number, string, string]>>;
+    /** Programmes of playlist channels that matched a guide channel by name, keyed by that name. */
+    byName?: Record<string, ReadonlyArray<readonly [number, number, string, string]>>;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -312,11 +314,16 @@ export class XtreamApiService {
         credentials: XtreamCredentials,
         action: 'xmltv_guide_start' | 'xmltv_guide_read',
         ids: readonly string[] = [],
-        options?: XtreamRequestOptions
+        options?: XtreamRequestOptions,
+        names: readonly string[] = []
     ): Promise<XtreamXmltvGuideReply> {
         return this.sendRequest<XtreamXmltvGuideReply>(
             credentials,
-            ids.length ? { action, ids: ids.join(',') } : { action },
+            {
+                action,
+                ...(ids.length && { ids: ids.join(',') }),
+                ...(names.length && { names: names.join('\t') }),
+            },
             { ...options, suppressErrorLog: true }
         );
     }

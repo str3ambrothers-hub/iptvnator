@@ -67,4 +67,14 @@ public class XmltvGuideTest {
         }
         assertTrue("fails", failed);
     }
+
+    public void testMatchesAChannelByName() throws Exception {
+        String xml = "<tv><channel id=\"GoTraveler.us\"><display-name>Go Traveler HD</display-name></channel>"
+            + "<programme start=\"20261127133000 +0000\" stop=\"20261127143000 +0000\" channel=\"GoTraveler.us\"><title>Trip</title></programme></tv>";
+        XmltvGuide.Snapshot snapshot = parse(xml, T, T + 3_600_000L, 1 << 20);
+        StringBuilder out = new StringBuilder();
+        snapshot.writeByName(Arrays.asList("USA Go Traveler", "USA Other", "[US] Go Traveler (HD)"), out);
+        assertEquals("by name", "\"USA Go Traveler\":[[1795786200,1795789800,\"Trip\",\"\"]],\"[US] Go Traveler (HD)\":[[1795786200,1795789800,\"Trip\",\"\"]]", out.toString());
+        assertEquals("normalised", "gotraveler", XmltvGuide.normName("USA | Go Traveler HD"));
+    }
 }

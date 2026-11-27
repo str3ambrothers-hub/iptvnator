@@ -298,8 +298,18 @@ function xmltvMs(value) {
     const offset = m[7] ? (m[7] === '-' ? -1 : 1) * ((+m[8] || 0) * 60 + (+m[9] || 0)) * 60000 : 0;
     return ms - offset;
 }
+const NAME_NOISE = new Set(['hd', 'fhd', 'uhd', 'sd', '4k', 'hevc', 'h265', 'h264', 'usa', 'us', 'ca', 'can', 'canada', 'uk']);
+function normName(raw) {
+    return String(raw || '').toLowerCase().replace(/[\[(].*?[\])]/g, ' ').split(/[^\p{L}\p{Nd}]+/u).filter((t) => t && !NAME_NOISE.has(t)).join('');
+}
 function parseXmltv(text, from, to) {
     const channels = new Map();
+    const names = new Map();
+    const addName = (id, name) => { const n = normName(name); if (n.length >= 3 && !names.has(n)) names.set(n, id); };
+    for (const m of text.matchAll(/<channel\s+id="([^"]*)"[^>]*>([\s\S]*?)<\/channel>/g)) {
+        addName(m[1], m[1].replace(/\.[A-Za-z]{2,3}\d*$/, ''));
+        for (const d of m[2].matchAll(/<display-name[^>]*>([\s\S]*?)<\/display-name>/g)) addName(m[1], d[1]);
+    }
     const unescape = (t) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
     for (const m of text.matchAll(/<programme\s+([^>]*)>([\s\S]*?)<\/programme>/g)) {
         const attr = (n) => new RegExp(`${n}="([^"]*)"`).exec(m[1])?.[1];
@@ -313,7 +323,7 @@ function parseXmltv(text, from, to) {
         if (!channels.has(key)) channels.set(key, []);
         channels.get(key).push([Math.floor(start / 1000), Math.floor(stop / 1000), unescape(title).trim(), unescape(desc).trim()]);
     }
-    return { channels, builtAt: Date.now() };
+    return { channels, names, builtAt: Date.now() };
 }
 async function xmltvGuide(query, base, action, userAgent, res, allowedOrigins) {
     const username = query.get('username') || '';
@@ -343,6 +353,13 @@ async function xmltvGuide(query, base, action, userAgent, res, allowedOrigins) {
                 if (kept) out[id] = kept;
             }
             payload.channels = out;
+            const byName = {};
+            for (const name of (query.get('names') || '').split('\t').filter(Boolean)) {
+                const id = guide.snapshot.names.get(normName(name));
+                const kept = id && guide.snapshot.channels.get(id.trim().toLowerCase());
+                if (kept) byName[name] = kept;
+            }
+            if (Object.keys(byName).length || query.get('names')) payload.byName = byName;
         }
     }
     return json(res, 200, { action, payload });

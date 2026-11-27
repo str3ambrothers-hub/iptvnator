@@ -230,6 +230,12 @@ export class EpgGuideComponent implements OnDestroy {
     );
 
     constructor() {
+        // "Only with EPG" needs to know which channels have a guide, so the scan starts whenever the
+        // toggle is on, including when it is on by default (the TV app); not only after a click.
+        effect(() => {
+            const on = this.view.onlyWithEpg();
+            untracked(() => this.programsService.setCoverageRequested(on));
+        });
         effect(() => {
             const axis = this.view.axis();
             const offset = this.offsetMinutes();

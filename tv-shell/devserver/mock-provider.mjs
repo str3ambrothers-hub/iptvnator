@@ -238,11 +238,15 @@ createServer((req, res) => {
         const hour = 3600000;
         const base = Math.floor(Date.now() / hour) * hour;
         const parts = ['<?xml version="1.0" encoding="UTF-8"?>', '<tv>'];
-        for (const stream of liveStreams.filter((s) => s.category_id === liveCategories[0].category_id)) {
-            parts.push(`<channel id="${stream.epg_channel_id}"><display-name>${stream.name}</display-name></channel>`);
+        const firstCategory = liveStreams.filter((s) => s.category_id === liveCategories[0].category_id);
+        const firstStream = firstCategory[0];
+        for (const stream of firstCategory) {
+            // The first channel is listed under a different id (only its name matches the playlist).
+            const fileId = stream === firstStream ? `alt-${stream.stream_id}.us` : stream.epg_channel_id;
+            parts.push(`<channel id="${fileId}"><display-name>${stream.name} HD</display-name></channel>`);
             for (let h = -2; h < 10; h++) {
                 parts.push(
-                    `<programme start="${stamp(base + h * hour)}" stop="${stamp(base + (h + 1) * hour)}" channel="${stream.epg_channel_id}"><title>Show ${h + 3} &amp; more</title><desc>Bulk guide programme ${h + 3}</desc></programme>`
+                    `<programme start="${stamp(base + h * hour)}" stop="${stamp(base + (h + 1) * hour)}" channel="${fileId}"><title>Show ${h + 3} &amp; more</title><desc>Bulk guide programme ${h + 3}</desc></programme>`
                 );
             }
         }

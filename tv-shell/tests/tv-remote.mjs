@@ -1695,11 +1695,12 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     const bulk = await page.evaluate(() => {
         const info = window.__tvGuideBulk?.() || {};
         return {
-            state: info.state, kept: info.kept, channels: info.channels,
+            state: info.state, kept: info.kept, absent: info.absent, channels: info.channels,
             blocks: [...document.querySelectorAll('.epg-guide-row__block')].filter((b) => /Show \d+ & more/.test(b.textContent || '')).length,
         };
     });
     check(bulk.state === 'ready' && bulk.kept > 0 && bulk.blocks > 0, 'programmes come from the whole-guide file: ' + JSON.stringify(bulk));
+    check(bulk.kept >= 6 && bulk.absent === 0, 'a channel listed under another id in the file is matched by its name: ' + JSON.stringify(bulk));
     await page.evaluate(() => window.__tvShell.back());
     await page.waitForTimeout(1000);
     await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });

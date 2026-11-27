@@ -12,7 +12,7 @@ import {
 import type { EpgGuideSearchHit, EpgGuideWindow } from '@iptvnator/ui/epg';
 import { toSharedEpgProgram } from '../portal-channels-list/epg-preview-program';
 import type { XtreamLiveChannelItem } from './xtream-live-channel-navigation.service';
-import { XtreamBulkGuide } from './xtream-bulk-guide';
+import { XtreamBulkGuide, type BulkScopeEntry } from './xtream-bulk-guide';
 import { XtreamGuideScheduleCache } from './xtream-guide-schedule-cache';
 
 export type XtreamGuideSchedule = { items: EpgItem[]; programs: EpgProgram[] };
@@ -164,12 +164,15 @@ export function injectXtreamGuideSchedules(
     // TV app: the provider's whole-guide file, when it is ready (see xtream-bulk-guide.ts).
     const bulk = new XtreamBulkGuide(() => (api ??= injector.get(XtreamApiService)));
     let scopeRows: ReadonlyMap<string, XtreamLiveChannelItem> | undefined;
-    let scopeIds: readonly (string | null | undefined)[] = [];
+    let scopeIds: readonly BulkScopeEntry[] = [];
     const bulkScope = () => {
         const rows = scopedRows();
         if (rows !== scopeRows) {
             scopeRows = rows;
-            scopeIds = [...rows.values()].map((row) => row.epg_channel_id);
+            scopeIds = [...rows.values()].map((row) => ({
+                epg: row.epg_channel_id,
+                name: row.name ?? row.title,
+            }));
         }
         return scopeIds;
     };
@@ -198,7 +201,7 @@ export function injectXtreamGuideSchedules(
             const key = scheduleKey(item);
             if (!cache.peek(key)) {
                 const bulked = await bulk
-                    .lookup(playlist, item.epg_channel_id, bulkScope, background)
+                    .lookup(playlist, item.epg_channel_id, bulkScope, background, item.name ?? item.title)
                     .catch(() => undefined);
                 checkCurrent();
                 if (bulked)
@@ -288,6 +291,10 @@ export function injectXtreamGuideSchedules(
             ) => void
         ): Promise<Set<string>> {
             const { read, checkCurrent } = reader(window.signal, true);
+            // Wait for the whole-guide file (when there is one): judging channels by the slow
+            // per-channel answers first would hide channels that the file does cover.
+            const playlist = revision().playlist;
+            if (playlist) await bulk.settled(playlist, window.signal).catch(() => undefined);
             const rows = scopedRows();
             const covered = new Set<string>();
             // TV app: scan outwards from where the viewer is, not always from the top.
