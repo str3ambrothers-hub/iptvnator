@@ -26,6 +26,17 @@ export const EPG_GUIDE_LOAD_CHUNK = 100;
 /** TV app: channels whose programmes stay loaded after they scroll away (switch: `guide-keep`). */
 const KEPT_ROWS = 1500;
 
+function hideUnknown(): boolean {
+    try {
+        return (
+            document.documentElement.classList.contains('tv-shell') &&
+            localStorage.getItem('guide-hide-unknown') !== 'off'
+        );
+    } catch {
+        return false;
+    }
+}
+
 function keepLoaded(): boolean {
     try {
         return (
@@ -245,7 +256,18 @@ export class EpgGuideProgramsService {
     /** Unknown (coverage not loaded yet, or a chunk failed) counts as covered
      * so rows never blink. */
     isCovered(channelId: string): boolean {
-        return this.coverage()?.get(channelId)?.hasPrograms !== false;
+        const known = this.coverage()?.get(channelId)?.hasPrograms;
+        if (known !== undefined) return known;
+        // TV app (switch: `guide-hide-unknown`): while the scan is still running, a channel we have
+        // no answer for yet stays hidden until its guide data arrives.
+        if (
+            hideUnknown() &&
+            this.coverageRequested &&
+            (this.coverage() === null || this.coverageStatus() === 'loading')
+        ) {
+            return (this.programs().get(channelId)?.length ?? 0) > 0;
+        }
+        return true;
     }
 
     refreshExpiredCoverage(nowMs: number): void {
