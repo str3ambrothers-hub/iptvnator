@@ -1667,6 +1667,40 @@
             }, 400);
             return true;
         }
+        /**
+         * Guide diagnostics (memory, loaded channels, requests). Toggle with the Menu button while the
+         * guide is open, or localStorage['guide-stats'] = 'on'. Off by default.
+         */
+        var statsBox = null, statsTimer = 0;
+        function statsOn() { try { return localStorage.getItem('guide-stats') === 'on'; } catch (err) { return false; } }
+        function renderStats() {
+            if (!statsBox) return;
+            var m = window.performance && performance.memory;
+            var g = typeof window.__tvGuideStats === 'function' ? window.__tvGuideStats() : null;
+            var c = typeof window.__tvGuideCache === 'function' ? window.__tvGuideCache() : null;
+            var lines = ['page memory ' + (m ? Math.round(m.usedJSHeapSize / 1048576) + ' / ' + Math.round(m.jsHeapSizeLimit / 1048576) + ' MB' : 'n/a')];
+            if (g) lines.push('channels ' + g.channels + ' | loaded ' + g.loaded + ' | on screen ' + g.visible + ' | waiting to save ' + g.queued, 'scan ' + (g.scanning ? 'running' : 'idle') + ' | scanned ' + g.scanned + ' | row requests ' + g.requests);
+            if (c) lines.push('cache ' + c.cached + ' schedules | requests running ' + c.running + ' waiting ' + c.waiting);
+            statsBox.textContent = lines.join('\n');
+        }
+        function setStats(on) {
+            try { localStorage.setItem('guide-stats', on ? 'on' : 'off'); } catch (err) { /* ignore */ }
+            clearInterval(statsTimer);
+            if (!on) { if (statsBox && statsBox.parentNode) statsBox.parentNode.removeChild(statsBox); statsBox = null; return; }
+            statsBox = document.createElement('div');
+            statsBox.setAttribute('aria-hidden', 'true');
+            statsBox.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;pointer-events:none;white-space:pre;font:12px/1.35 monospace;color:#9f9;background:rgba(0,0,0,.75);padding:4px 8px;border-radius:4px';
+            document.body.appendChild(statsBox);
+            renderStats();
+            statsTimer = setInterval(renderStats, 1000);
+        }
+        if (statsOn()) setStats(true);
+        document.addEventListener('keydown', function (e) {
+            if (e.keyCode !== 82 && e.key !== 'Menu') return;
+            if (!document.querySelector('.epg-guide__head')) return;
+            e.preventDefault();
+            setStats(!statsBox);
+        }, true);
         document.addEventListener('tv-guide-select', function (e) {
             var intent = e && e.detail && e.detail.intent;
             clearTimeout(previewTimer);

@@ -79,7 +79,14 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
 
     constructor(
         private readonly cancelTransport: (sessionId: string) => void
-    ) {}
+    ) {
+        if (tvPrefetch())
+            (globalThis as { __tvGuideCache?: unknown }).__tvGuideCache = () => ({
+                cached: this.cached.size,
+                running: this.slots.size,
+                waiting: Math.max(0, this.pending.size - this.slots.size),
+            });
+    }
 
     clear(): void {
         this.controller.abort();

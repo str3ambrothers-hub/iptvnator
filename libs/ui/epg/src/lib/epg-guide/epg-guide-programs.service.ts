@@ -102,11 +102,21 @@ export class EpgGuideProgramsService {
     readonly coverageLoaded = computed(() => this.coverage() !== null);
     readonly coverageStatus = signal<'idle' | 'loading' | 'error'>('idle');
 
+    /** Scan results waiting to be written in one go (TV app), see `queueStore`. */
+    private queuedStores: Array<[string, readonly EpgProgram[]]> = [];
+    private queueTimer: ReturnType<typeof setTimeout> | undefined;
+
     constructor() {
         inject(DestroyRef).onDestroy(() => {
             this.cancelProgramRequests();
             this.cancelCoverageRequest();
+            this.dropQueuedStores();
+            const host = window as unknown as { __tvGuideStats?: unknown };
+            if (host.__tvGuideStats === this.statsFn) delete host.__tvGuideStats;
         });
+        if (keepLoaded())
+            (window as unknown as { __tvGuideStats?: unknown }).__tvGuideStats =
+                this.statsFn;
         // A new channel set (scope change) invalidates everything, including
         // coverage: the toggle must be answered for the new rows. The first
         // effect run must NOT invalidate: a host can call `setWindow` (and
@@ -164,6 +174,37 @@ export class EpgGuideProgramsService {
     statusFor(channelId: string): EpgGuideRowStatus {
         const status = this.statuses().get(channelId);
         return status === 'stale' ? 'loaded' : (status ?? 'idle');
+    }
+
+    private readonly statsFn = () => ({
+        channels: this.source.channels().length,
+        loaded: this.programs().size,
+        visible: this.visibleRows.size,
+        requests: this.programRequests.size,
+        scanning: this.coverageStatus() === 'loading',
+        scanned: this.coverage()?.size ?? 0,
+        queued: this.queuedStores.length,
+    });
+
+    /**
+     * Scan results for channels not on screen are written together every 300 ms instead of one by
+     * one: each write copies the whole list of loaded channels and redraws, so this keeps the guide
+     * smooth. Requests are unchanged. Rows on screen are still written at once.
+     */
+    private queueStore(id: string, programs: readonly EpgProgram[]): void {
+        this.queuedStores.push([id, programs]);
+        this.queueTimer ??= setTimeout(() => {
+            this.queueTimer = undefined;
+            const batch = this.queuedStores;
+            this.queuedStores = [];
+            if (batch.length) this.storePrograms(batch);
+        }, 300);
+    }
+
+    private dropQueuedStores(): void {
+        clearTimeout(this.queueTimer);
+        this.queueTimer = undefined;
+        this.queuedStores = [];
     }
 
     /** TV app: a scanned channel that is not on screen yet is kept, so scrolling to it shows it at once. */
@@ -419,11 +460,10 @@ export class EpgGuideProgramsService {
                                 id,
                                 programs && programs.length > 0
                             );
-                            if (
-                                programs &&
-                                (this.canRecover(id) || this.canKeepAhead(id))
-                            )
+                            if (programs && this.canRecover(id))
                                 this.storePrograms([[id, programs]]);
+                            else if (programs && this.canKeepAhead(id))
+                                this.queueStore(id, programs);
                         }
                     )
                     .catch(() => {
@@ -463,6 +503,7 @@ export class EpgGuideProgramsService {
     }
 
     private invalidate(): void {
+        this.dropQueuedStores();
         this.cancelProgramRequests();
         this.rowExpiry.clear();
         this.visibleRows.clear();
