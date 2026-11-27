@@ -34,6 +34,8 @@ export interface EpgGuideWindow {
     readonly fromMs: number;
     readonly toMs: number;
     readonly signal?: AbortSignal;
+    /** The channel at the top of the screen, so a scan can work outwards from where the viewer is. */
+    readonly focusId?: () => string | undefined;
 }
 
 export interface EpgGuideCatchUp {

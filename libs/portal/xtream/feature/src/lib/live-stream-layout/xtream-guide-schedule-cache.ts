@@ -64,6 +64,8 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
     private readonly pending = new Map<string, PendingSchedule<T>>();
     private readonly slots = new Set<Promise<void>>();
     private controller = new AbortController();
+    private foregroundWaiting = 0;
+    private readonly prefetch = tvPrefetch();
     private readonly concurrent = tvPrefetch()
         ? TV_CONCURRENT_REQUESTS
         : CONCURRENT_REQUESTS;
@@ -131,9 +133,26 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
             const entry = this.pending.get(id);
             if (entry) return this.consume(id, entry, signals);
             const limit = background ? this.background : this.concurrent;
-            if (this.slots.size < limit)
+            // TV app: the scan steps aside while rows on screen are waiting for a connection.
+            const yielding = background && this.prefetch && this.foregroundWaiting > 0;
+            if (this.slots.size < limit && !yielding)
                 return this.consume(id, this.start(id, fetch), signals);
-            await waitFor(Promise.race([...this.slots]), signals);
+            if (background) {
+                await waitFor(
+                    Promise.race([
+                        ...this.slots,
+                        new Promise<void>((resolve) => setTimeout(resolve, 150)),
+                    ]),
+                    signals
+                );
+                continue;
+            }
+            this.foregroundWaiting++;
+            try {
+                await waitFor(Promise.race([...this.slots]), signals);
+            } finally {
+                this.foregroundWaiting--;
+            }
         }
     }
 

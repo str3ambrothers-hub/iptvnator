@@ -40,6 +40,47 @@ function trimmedWindow<T extends { fromMs: number; toMs: number }>(window: T): T
     }
 }
 
+/**
+ * Channel ids in scan order. Normally the list order; in the TV app the scan restarts from the top
+ * of the screen whenever the viewer has moved on (switch: localStorage['guide-scan-follow'] = 'off').
+ */
+function* scanOrder(window: EpgGuideWindow): Generator<string> {
+    const ids = window.channels.map((channel) => channel.id);
+    let follow = false;
+    try {
+        follow =
+            !!window.focusId &&
+            document.documentElement.classList.contains('tv-shell') &&
+            localStorage.getItem('guide-scan-follow') !== 'off';
+    } catch {
+        follow = false;
+    }
+    if (!follow) {
+        yield* ids;
+        return;
+    }
+    const index = new Map(ids.map((id, i) => [id, i]));
+    const done = new Uint8Array(ids.length);
+    let left = ids.length;
+    let cursor = 0;
+    let lastFocus: string | undefined;
+    while (left > 0) {
+        const focus = window.focusId?.();
+        if (focus !== lastFocus) {
+            lastFocus = focus;
+            const at = focus === undefined ? undefined : index.get(focus);
+            if (at !== undefined) cursor = at;
+        }
+        let steps = 0;
+        while (done[cursor] && steps++ < ids.length) cursor = (cursor + 1) % ids.length;
+        if (done[cursor]) return;
+        done[cursor] = 1;
+        left--;
+        yield ids[cursor];
+        cursor = (cursor + 1) % ids.length;
+    }
+}
+
 /** Retry failed or empty schedule loads. Kill switch: localStorage['guide-epg-retry'] = 'off'. */
 function guideRetryEnabled(): boolean {
     try {
@@ -225,7 +266,9 @@ export function injectXtreamGuideSchedules(
             const { read, checkCurrent } = reader(window.signal, true);
             const rows = scopedRows();
             const covered = new Set<string>();
-            for (const { id } of window.channels) {
+            // TV app: scan outwards from where the viewer is, not always from the top.
+            const order = scanOrder(window);
+            for (const id of order) {
                 const programs = await read(rows.get(id)).catch(() => {
                     checkCurrent();
                     return null;

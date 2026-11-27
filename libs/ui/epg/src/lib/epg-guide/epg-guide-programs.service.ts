@@ -452,7 +452,12 @@ export class EpgGuideProgramsService {
             chunks.map((channels) =>
                 this.source
                     .loadCoverage(
-                        { channels, ...range, signal: request.signal },
+                        {
+                            channels,
+                            ...range,
+                            signal: request.signal,
+                            focusId: () => this.visibleRows.values().next().value,
+                        },
                         (id, programs) => {
                             if (request.signal.aborted) return;
                             this.reportCoverage(
