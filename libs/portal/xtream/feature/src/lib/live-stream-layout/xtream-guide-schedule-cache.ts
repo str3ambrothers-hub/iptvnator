@@ -10,7 +10,7 @@ const CACHED_STREAMS = 256;
 const TV_CONCURRENT_REQUESTS = 4;
 const TV_BACKGROUND_REQUESTS = 3;
 const TV_REQUEST_PAUSE_MS = 100;
-const TV_CACHED_STREAMS = 800;
+const TV_CACHED_STREAMS = 1500;
 
 function tvPrefetch(): boolean {
     try {

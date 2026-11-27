@@ -20,6 +20,26 @@ type ScheduleRevision = {
 };
 const EMPTY: XtreamGuideSchedule = { items: [], programs: [] };
 
+/**
+ * TV app: keep only the programmes from an hour ago to 12 hours ahead (the guide window is a whole
+ * day), so far more channels fit in memory. Kill switch: localStorage['guide-window'] = 'off'.
+ */
+function trimmedWindow<T extends { fromMs: number; toMs: number }>(window: T): T {
+    try {
+        if (
+            !document.documentElement.classList.contains('tv-shell') ||
+            localStorage.getItem('guide-window') === 'off'
+        )
+            return window;
+        const now = Date.now();
+        const fromMs = Math.max(window.fromMs, now - 3_600_000);
+        const toMs = Math.min(window.toMs, now + 12 * 3_600_000);
+        return fromMs < toMs ? { ...window, fromMs, toMs } : window;
+    } catch {
+        return window;
+    }
+}
+
 /** Retry failed or empty schedule loads. Kill switch: localStorage['guide-epg-retry'] = 'off'. */
 function guideRetryEnabled(): boolean {
     try {
@@ -182,7 +202,10 @@ export function injectXtreamGuideSchedules(
                         return [
                             id,
                             (await read(rows.get(id))).filter((program) =>
-                                programmeOverlapsGuideWindow(program, window)
+                                programmeOverlapsGuideWindow(
+                                    program,
+                                    trimmedWindow(window)
+                                )
                             ),
                         ] as const;
                     } catch {
@@ -208,7 +231,7 @@ export function injectXtreamGuideSchedules(
                     return null;
                 });
                 const matches = programs?.filter((item) =>
-                    programmeOverlapsGuideWindow(item, window)
+                    programmeOverlapsGuideWindow(item, trimmedWindow(window))
                 );
                 if (!matches || matches.length) covered.add(id);
                 reportPrograms?.(id, matches ?? null);

@@ -23,6 +23,20 @@ import {
 
 /** Channels per `loadPrograms` call (the programme IPC caps at 100 keys). */
 export const EPG_GUIDE_LOAD_CHUNK = 100;
+/** TV app: channels whose programmes stay loaded after they scroll away (switch: `guide-keep`). */
+const KEPT_ROWS = 1500;
+
+function keepLoaded(): boolean {
+    try {
+        return (
+            document.documentElement.classList.contains('tv-shell') &&
+            localStorage.getItem('guide-keep') !== 'off'
+        );
+    } catch {
+        return false;
+    }
+}
+
 /**
  * Channels per `loadCoverage` call. Deliberately half the IPC's 2000-key cap:
  * it leaves headroom for the host to append keys to the same request (e.g. a
@@ -152,6 +166,32 @@ export class EpgGuideProgramsService {
         return status === 'stale' ? 'loaded' : (status ?? 'idle');
     }
 
+    /** TV app: a scanned channel that is not on screen yet is kept, so scrolling to it shows it at once. */
+    private canKeepAhead(id: string): boolean {
+        return (
+            keepLoaded() &&
+            !this.visibleRows.has(id) &&
+            this.statuses().get(id) !== 'loaded'
+        );
+    }
+
+    /** Keep at most KEPT_ROWS loaded channels; drop the oldest ones that are not on screen. */
+    private trimKept(): void {
+        const programs = this.programs();
+        if (programs.size <= KEPT_ROWS) return;
+        const next = new Map(programs);
+        const statuses = new Map(this.statuses());
+        for (const id of programs.keys()) {
+            if (next.size <= KEPT_ROWS) break;
+            if (this.visibleRows.has(id)) continue;
+            next.delete(id);
+            if (statuses.get(id) !== 'none') statuses.delete(id);
+            this.rowExpiry.delete(id);
+        }
+        this.programs.set(next);
+        this.statuses.set(statuses);
+    }
+
     private canRecover(id: string | null): boolean {
         const status = this.statuses().get(id ?? '');
         return (
@@ -187,8 +227,19 @@ export class EpgGuideProgramsService {
                 if (rows.some((row) => visible.has(row.id))) continue;
                 request.abort();
                 this.programRequests.delete(request);
+                if (keepLoaded()) {
+                    // Cancelled before it finished: forget "loading" so the row asks again later.
+                    const statuses = new Map(this.statuses());
+                    for (const row of rows)
+                        if (statuses.get(row.id) === 'loading')
+                            statuses.delete(row.id);
+                    this.statuses.set(statuses);
+                }
             }
-            const departed = [...previousRows].filter((id) => !visible.has(id));
+            const departed = keepLoaded()
+                ? []
+                : [...previousRows].filter((id) => !visible.has(id));
+            if (keepLoaded()) this.trimKept();
             if (departed.length) {
                 const programs = new Map(this.programs());
                 const statuses = new Map(this.statuses());
@@ -368,7 +419,10 @@ export class EpgGuideProgramsService {
                                 id,
                                 programs && programs.length > 0
                             );
-                            if (programs && this.canRecover(id))
+                            if (
+                                programs &&
+                                (this.canRecover(id) || this.canKeepAhead(id))
+                            )
                                 this.storePrograms([[id, programs]]);
                         }
                     )
