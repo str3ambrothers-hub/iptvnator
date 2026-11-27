@@ -64,6 +64,7 @@ export class XtreamBulkGuide {
     private truncated = false;
     private channelCount = 0;
     private failedUntil = 0;
+    private lastError = '';
     private memoAt = 0;
     private readonly memo = new Map<string, EpgItem[]>();
     private readonly absent = new Set<string>();
@@ -79,6 +80,8 @@ export class XtreamBulkGuide {
             absent: this.absent.size,
             requests: this.requests,
             truncated: this.truncated,
+            error: this.lastError,
+            retryInMs: Math.max(0, this.failedUntil - Date.now()),
         });
     }
 
@@ -138,8 +141,9 @@ export class XtreamBulkGuide {
     private async poll(credentials: XtreamCredentials, owner: string): Promise<void> {
         const began = Date.now();
         let polls = 0;
-        const fail = () => {
+        const fail = (why: string) => {
             if (this.owner !== owner) return;
+            this.lastError = why;
             this.state = 'idle';
             this.failedUntil = Date.now() + RETRY_AFTER_FAILURE_MS;
         };
@@ -153,14 +157,16 @@ export class XtreamBulkGuide {
                     this.channelCount = reply.channelCount ?? 0;
                     this.memoAt = Date.now();
                     this.state = 'ready';
+                    this.lastError = '';
                     return;
                 }
-                if (reply?.state === 'error' || Date.now() - began > GIVE_UP_MS) return fail();
+                if (reply?.state === 'error') return fail(reply.error || 'error');
+                if (Date.now() - began > GIVE_UP_MS) return fail('took too long');
                 // Quick first checks (a copy that is already built answers at once), then slower.
                 await new Promise((resolve) => setTimeout(resolve, ++polls < 5 ? 600 : POLL_MS));
             }
-        } catch {
-            fail();
+        } catch (e) {
+            fail('request failed: ' + (e instanceof Error ? e.message : String(e)).slice(0, 60));
         }
     }
 

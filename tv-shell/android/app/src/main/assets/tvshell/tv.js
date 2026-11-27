@@ -1682,7 +1682,7 @@
             if (g) lines.push('channels ' + g.channels + ' | loaded ' + g.loaded + ' | on screen ' + g.visible + ' | waiting to save ' + g.queued, 'scan ' + (g.scanning ? 'running' : 'idle') + ' | scanned ' + g.scanned + ' | row requests ' + g.requests);
             if (c) lines.push('cache ' + c.cached + ' schedules | requests running ' + c.running + ' waiting ' + c.waiting);
             var b = typeof window.__tvGuideBulk === 'function' ? window.__tvGuideBulk() : null;
-            if (b) lines.push('guide file ' + b.state + ' | ' + b.channels + ' channels in it | ' + b.kept + ' loaded here | ' + b.absent + ' not in it | ' + b.requests + ' requests' + (b.truncated ? ' | CUT SHORT' : ''));
+            if (b) lines.push('guide file ' + b.state + (b.error ? ' (' + b.error + (b.retryInMs > 0 ? ', retry in ' + Math.ceil(b.retryInMs / 1000) + 's' : '') + ')' : '') + ' | ' + b.channels + ' channels in it | ' + b.kept + ' loaded here | ' + b.absent + ' not in it | ' + b.requests + ' requests' + (b.truncated ? ' | CUT SHORT' : ''));
             statsBox.textContent = lines.join('\n');
         }
         function setStats(on) {
