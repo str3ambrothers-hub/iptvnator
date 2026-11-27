@@ -21,6 +21,18 @@ const ACTIVE_ROW_MARGIN = 3;
 /** Rows requested before the viewport has reported a rendered range. */
 const INITIAL_LOAD_ROWS = 30;
 
+/** TV app: also load 30 rows below the screen so scrolling down finds them ready (switch: `guide-prefetch`). */
+function extraRowsAhead(): number {
+    try {
+        return document.documentElement.classList.contains('tv-shell') &&
+            localStorage.getItem('guide-prefetch') !== 'off'
+            ? 30
+            : 0;
+    } catch {
+        return 0;
+    }
+}
+
 export interface EpgGuideViewportHost {
     guideElement(): HTMLElement;
     viewport(): CdkVirtualScrollViewport | undefined;
@@ -100,7 +112,10 @@ export class EpgGuideViewportController {
             end: Math.min(rows.length, INITIAL_LOAD_ROWS),
         };
         const start = Math.max(0, range.start - EPG_GUIDE_ROW_BUFFER);
-        const end = Math.min(rows.length, range.end + EPG_GUIDE_ROW_BUFFER);
+        const end = Math.min(
+            rows.length,
+            range.end + EPG_GUIDE_ROW_BUFFER + extraRowsAhead()
+        );
         this.host.ensureLoaded(rows.slice(start, end));
     }
 

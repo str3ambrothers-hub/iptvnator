@@ -5,6 +5,24 @@ const CONCURRENT_REQUESTS = 2;
 const BACKGROUND_REQUESTS = CONCURRENT_REQUESTS - 1;
 const REQUEST_PAUSE_MS = 200;
 const CACHED_STREAMS = 256;
+// TV app: the scan runs wider and faster so channels are already loaded by the time you scroll to
+// them (kill switch: localStorage['guide-prefetch'] = 'off').
+const TV_CONCURRENT_REQUESTS = 4;
+const TV_BACKGROUND_REQUESTS = 3;
+const TV_REQUEST_PAUSE_MS = 100;
+const TV_CACHED_STREAMS = 800;
+
+function tvPrefetch(): boolean {
+    try {
+        return (
+            globalThis.document?.documentElement.classList.contains(
+                'tv-shell'
+            ) === true && globalThis.localStorage?.getItem('guide-prefetch') !== 'off'
+        );
+    } catch {
+        return false;
+    }
+}
 const SCHEDULE_TTL_MS = 5 * 60_000;
 
 type FetchSchedule<T> = (options: {
@@ -46,6 +64,18 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
     private readonly pending = new Map<string, PendingSchedule<T>>();
     private readonly slots = new Set<Promise<void>>();
     private controller = new AbortController();
+    private readonly concurrent = tvPrefetch()
+        ? TV_CONCURRENT_REQUESTS
+        : CONCURRENT_REQUESTS;
+    private readonly background = tvPrefetch()
+        ? TV_BACKGROUND_REQUESTS
+        : BACKGROUND_REQUESTS;
+    private readonly pauseMs = tvPrefetch()
+        ? TV_REQUEST_PAUSE_MS
+        : REQUEST_PAUSE_MS;
+    private readonly maxCached = tvPrefetch()
+        ? TV_CACHED_STREAMS
+        : CACHED_STREAMS;
 
     constructor(
         private readonly cancelTransport: (sessionId: string) => void
@@ -93,9 +123,7 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
             }
             const entry = this.pending.get(id);
             if (entry) return this.consume(id, entry, signals);
-            const limit = background
-                ? BACKGROUND_REQUESTS
-                : CONCURRENT_REQUESTS;
+            const limit = background ? this.background : this.concurrent;
             if (this.slots.size < limit)
                 return this.consume(id, this.start(id, fetch), signals);
             await waitFor(Promise.race([...this.slots]), signals);
@@ -122,7 +150,7 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
                 (programs) => this.finish(id, entry, programs),
                 () => this.finish(id, entry)
             )
-            .then(this.pause)
+            .then(() => this.pause())
             .finally(() => this.slots.delete(slot));
         this.slots.add(slot);
         return entry;
@@ -152,13 +180,13 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
             value,
             expiresAt: Date.now() + SCHEDULE_TTL_MS,
         });
-        if (this.cached.size > CACHED_STREAMS) {
+        if (this.cached.size > this.maxCached) {
             const oldest = this.cached.keys().next().value;
             if (oldest !== undefined) this.cached.delete(oldest);
         }
     }
 
     private pause(): Promise<void> {
-        return new Promise((resolve) => setTimeout(resolve, REQUEST_PAUSE_MS));
+        return new Promise((resolve) => setTimeout(resolve, this.pauseMs));
     }
 }
