@@ -303,3 +303,8 @@
         color: $accent-text;
     }
 }
+
+// TV app: only the channel name in the channel cell (switch: `guide-row-name`).
+:host-context(html.tv-shell:not(.guide-rowname-off)) .epg-guide-row__name small {
+    display: none;
+}
