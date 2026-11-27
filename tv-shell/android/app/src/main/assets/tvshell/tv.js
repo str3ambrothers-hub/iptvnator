@@ -1681,6 +1681,8 @@
             var lines = ['page memory ' + (m ? Math.round(m.usedJSHeapSize / 1048576) + ' / ' + Math.round(m.jsHeapSizeLimit / 1048576) + ' MB' : 'n/a')];
             if (g) lines.push('channels ' + g.channels + ' | loaded ' + g.loaded + ' | on screen ' + g.visible + ' | waiting to save ' + g.queued, 'scan ' + (g.scanning ? 'running' : 'idle') + ' | scanned ' + g.scanned + ' | row requests ' + g.requests);
             if (c) lines.push('cache ' + c.cached + ' schedules | requests running ' + c.running + ' waiting ' + c.waiting);
+            var b = typeof window.__tvGuideBulk === 'function' ? window.__tvGuideBulk() : null;
+            if (b) lines.push('guide file ' + b.state + ' | ' + b.channels + ' channels in it | ' + b.kept + ' loaded here | ' + b.absent + ' not in it | ' + b.requests + ' requests' + (b.truncated ? ' | CUT SHORT' : ''));
             statsBox.textContent = lines.join('\n');
         }
         function setStats(on) {

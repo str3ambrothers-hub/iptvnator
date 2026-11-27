@@ -1687,6 +1687,21 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     }));
     check(!closed.guide && !closed.oldList && closed.categories > 0,
         'closing the guide goes back to the categories, not the old channel list: ' + JSON.stringify(closed));
+    // The provider's whole-guide file (xmltv.php): once the backend has read it, a category opens with
+    // its programmes from that one file (the mock lists "Show N & more" for the first category).
+    await page.waitForFunction(() => window.__tvGuideBulk?.().state === 'ready', null, { timeout: 20000 }).catch(() => { /* reported below */ });
+    await page.evaluate(() => document.querySelector('button.category-item')?.click());
+    await page.waitForTimeout(3500);
+    const bulk = await page.evaluate(() => {
+        const info = window.__tvGuideBulk?.() || {};
+        return {
+            state: info.state, kept: info.kept, channels: info.channels,
+            blocks: [...document.querySelectorAll('.epg-guide-row__block')].filter((b) => /Show \d+ & more/.test(b.textContent || '')).length,
+        };
+    });
+    check(bulk.state === 'ready' && bulk.kept > 0 && bulk.blocks > 0, 'programmes come from the whole-guide file: ' + JSON.stringify(bulk));
+    await page.evaluate(() => window.__tvShell.back());
+    await page.waitForTimeout(1000);
     await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
 }
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');

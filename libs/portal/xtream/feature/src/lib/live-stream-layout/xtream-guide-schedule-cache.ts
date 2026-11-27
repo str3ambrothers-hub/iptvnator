@@ -102,6 +102,16 @@ export class XtreamGuideScheduleCache<T = EpgProgram[]> {
         return this.cached.get(id)?.expiresAt ?? 0;
     }
 
+    /** Stores a schedule that did not need a request (read from the whole-guide file). */
+    put(id: string, value: T): void {
+        this.cached.delete(id);
+        this.cached.set(id, { value, expiresAt: Date.now() + SCHEDULE_TTL_MS });
+        if (this.cached.size > this.maxCached) {
+            const oldest = this.cached.keys().next().value;
+            if (oldest !== undefined) this.cached.delete(oldest);
+        }
+    }
+
     peek(id: string): T | undefined {
         const cached = this.cached.get(id);
         return cached && cached.expiresAt > Date.now()

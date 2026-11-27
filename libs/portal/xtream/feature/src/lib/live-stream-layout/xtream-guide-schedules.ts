@@ -12,6 +12,7 @@ import {
 import type { EpgGuideSearchHit, EpgGuideWindow } from '@iptvnator/ui/epg';
 import { toSharedEpgProgram } from '../portal-channels-list/epg-preview-program';
 import type { XtreamLiveChannelItem } from './xtream-live-channel-navigation.service';
+import { XtreamBulkGuide } from './xtream-bulk-guide';
 import { XtreamGuideScheduleCache } from './xtream-guide-schedule-cache';
 
 export type XtreamGuideSchedule = { items: EpgItem[]; programs: EpgProgram[] };
@@ -160,6 +161,18 @@ export function injectXtreamGuideSchedules(
     const cache = new XtreamGuideScheduleCache<XtreamGuideSchedule>(
         (sessionId) => void api?.cancelSession(sessionId)
     );
+    // TV app: the provider's whole-guide file, when it is ready (see xtream-bulk-guide.ts).
+    const bulk = new XtreamBulkGuide(() => (api ??= injector.get(XtreamApiService)));
+    let scopeRows: ReadonlyMap<string, XtreamLiveChannelItem> | undefined;
+    let scopeIds: readonly (string | null | undefined)[] = [];
+    const bulkScope = () => {
+        const rows = scopedRows();
+        if (rows !== scopeRows) {
+            scopeRows = rows;
+            scopeIds = [...rows.values()].map((row) => row.epg_channel_id);
+        }
+        return scopeIds;
+    };
 
     function reader(signal?: AbortSignal, background = false) {
         const current = revision();
@@ -183,6 +196,17 @@ export function injectXtreamGuideSchedules(
             const playlist = current.playlist;
             if (!playlist || !item) return EMPTY;
             const key = scheduleKey(item);
+            if (!cache.peek(key)) {
+                const bulked = await bulk
+                    .lookup(playlist, item.epg_channel_id, bulkScope, background)
+                    .catch(() => undefined);
+                checkCurrent();
+                if (bulked)
+                    cache.put(key, {
+                        items: bulked,
+                        programs: bulked.map(toSharedEpgProgram),
+                    });
+            }
             const schedule = await cache.load(
                 key,
                 checkCurrent,

@@ -4,6 +4,7 @@ import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +79,7 @@ public class WebBackend {
     private final HttpFetcher fetcher;
     private final String runtimeBackendUrl;
     private final ImageCache imageCache;
+    private final XmltvGuideStore guideStore;
     private final Map<String, String> providerTargets = new ConcurrentHashMap<String, String>();
 
     public WebBackend(HttpFetcher fetcher, String runtimeBackendUrl) {
@@ -89,6 +91,7 @@ public class WebBackend {
         this.fetcher = fetcher;
         this.runtimeBackendUrl = runtimeBackendUrl;
         this.imageCache = imageCache;
+        this.guideStore = new XmltvGuideStore(fetcher);
     }
 
     // ---------------------------------------------------------------- entry
@@ -241,6 +244,7 @@ public class WebBackend {
         boolean connectionTest = "true".equals(query.get("connectionTest"));
         try {
             String base = PortalUrls.normalizeXtreamServerUrl(registeredUrl);
+            if (action != null && action.startsWith("xmltv_guide")) return xmltvGuide(query, base, action);
             Map<String, String> params = proxyParams(query, "targetId", "connectionTest", "userAgent");
             Map<String, String> headers = new LinkedHashMap<String, String>();
             String userAgent = query.get("userAgent");
@@ -272,6 +276,37 @@ public class WebBackend {
             }
             return json(200, error("Bad Gateway", 502));
         }
+    }
+
+    /**
+     * The provider's whole-guide file (xmltv.php) for the TV guide: {@code xmltv_guide_start}
+     * begins reading it in the background, {@code xmltv_guide_read} (ids=a,b,c) answers the state
+     * and the kept programmes of those channels. Same login and server as the other Xtream calls.
+     */
+    private Response xmltvGuide(Map<String, String> query, String base, String action) {
+        String username = query.get("username");
+        String password = query.get("password");
+        if (username == null || password == null) return json(200, error("Bad Gateway", 502));
+        Map<String, String> headers = new LinkedHashMap<String, String>();
+        String userAgent = query.get("userAgent");
+        if (userAgent != null) headers.put("User-Agent", userAgent);
+        Map<String, String> params = new LinkedHashMap<String, String>();
+        params.put("username", username);
+        params.put("password", password);
+        String url = PortalUrls.withQuery(base.replaceAll("/+$", "") + "/xmltv.php", params);
+        Map<String, Object> payload = guideStore.start(base + "|" + username, url, headers);
+        if ("xmltv_guide_read".equals(action)) {
+            List<String> ids = new ArrayList<String>();
+            String joined = query.get("ids");
+            if (joined != null && !joined.isEmpty()) {
+                for (String id : joined.split(",")) if (!id.isEmpty()) ids.add(id);
+            }
+            payload = guideStore.read(ids);
+        }
+        Map<String, Object> out = Json.object();
+        out.put("action", action);
+        out.put("payload", payload);
+        return json(200, out);
     }
 
     private Response stalker(Map<String, String> query) {

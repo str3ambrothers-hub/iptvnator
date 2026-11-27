@@ -69,6 +69,15 @@ async function loadEpgNormalizer(signal?: AbortSignal) {
 }
 
 /** Service for all Xtream Codes API interactions. */
+export interface XtreamXmltvGuideReply {
+    state: 'idle' | 'building' | 'ready' | 'error';
+    ageMs?: number;
+    channelCount?: number;
+    truncated?: boolean;
+    error?: string;
+    channels?: Record<string, ReadonlyArray<readonly [number, number, string, string]>>;
+}
+
 @Injectable({ providedIn: 'root' })
 export class XtreamApiService {
     private readonly dataService = inject(DataService);
@@ -292,6 +301,24 @@ export class XtreamApiService {
         return (
             await loadEpgNormalizer(options?.signal)
         ).normalizeShortEpgItems(response, credentials.serverTimezone);
+    }
+
+    /**
+     * TV app: the provider's whole-guide file (xmltv.php), read by the app's backend.
+     * `xmltv_guide_start` begins reading it and answers the state; `xmltv_guide_read` also answers
+     * the kept programmes (`[startSeconds, stopSeconds, title, description]`) of `ids`.
+     */
+    async xmltvGuide(
+        credentials: XtreamCredentials,
+        action: 'xmltv_guide_start' | 'xmltv_guide_read',
+        ids: readonly string[] = [],
+        options?: XtreamRequestOptions
+    ): Promise<XtreamXmltvGuideReply> {
+        return this.sendRequest<XtreamXmltvGuideReply>(
+            credentials,
+            ids.length ? { action, ids: ids.join(',') } : { action },
+            { ...options, suppressErrorLog: true }
+        );
     }
 
     /**

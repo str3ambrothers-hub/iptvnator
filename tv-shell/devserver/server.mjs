@@ -239,6 +239,7 @@ export async function handleApi(req, res, url, allowedOrigins = PROVIDER_ORIGINS
         const userAgent = (query.get('userAgent') || '').trim();
         try {
             const base = normalizeXtreamServerUrl(target);
+            if (action && action.startsWith('xmltv_guide')) return await xmltvGuide(query, base, action, userAgent, res, allowedOrigins);
             const apiUrl = new URL(`${base.replace(/\/+$/, '')}/player_api.php`);
             for (const [k, v] of Object.entries(proxyParams(query, ['targetId', 'connectionTest', 'userAgent']))) apiUrl.searchParams.set(k, v);
             const text = await fetchText(apiUrl.href, allowedOrigins, { headers: userAgent ? { 'User-Agent': userAgent } : {}, timeoutMs: 30000 });
@@ -285,6 +286,66 @@ export async function handleApi(req, res, url, allowedOrigins = PROVIDER_ORIGINS
         return json(res, 501, { message: 'EPG is not supported in the TV shell', status: 501 });
     }
     return json(res, 404, { message: 'Not found', status: 404 });
+}
+
+// Whole-guide file (xmltv.php), as the Java backend does it: start reads it in the background,
+// read answers the state and the kept programmes of ids=a,b,c.
+let guide = { key: '', snapshot: null, building: null, builtAt: 0 };
+function xmltvMs(value) {
+    const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?\s*([+-])?(\d{2})?(\d{2})?/.exec((value || '').trim());
+    if (!m) return NaN;
+    const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+    const offset = m[7] ? (m[7] === '-' ? -1 : 1) * ((+m[8] || 0) * 60 + (+m[9] || 0)) * 60000 : 0;
+    return ms - offset;
+}
+function parseXmltv(text, from, to) {
+    const channels = new Map();
+    const unescape = (t) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+    for (const m of text.matchAll(/<programme\s+([^>]*)>([\s\S]*?)<\/programme>/g)) {
+        const attr = (n) => new RegExp(`${n}="([^"]*)"`).exec(m[1])?.[1];
+        const start = xmltvMs(attr('start'));
+        const stop = xmltvMs(attr('stop'));
+        const channel = attr('channel');
+        if (!channel || !(stop > start) || !(stop > from && start < to)) continue;
+        const title = /<title[^>]*>([\s\S]*?)<\/title>/.exec(m[2])?.[1] ?? '';
+        const desc = /<desc[^>]*>([\s\S]*?)<\/desc>/.exec(m[2])?.[1] ?? '';
+        const key = channel.trim().toLowerCase();
+        if (!channels.has(key)) channels.set(key, []);
+        channels.get(key).push([Math.floor(start / 1000), Math.floor(stop / 1000), unescape(title).trim(), unescape(desc).trim()]);
+    }
+    return { channels, builtAt: Date.now() };
+}
+async function xmltvGuide(query, base, action, userAgent, res, allowedOrigins) {
+    const username = query.get('username') || '';
+    const key = `${base}|${username}`;
+    if (guide.key !== key) guide = { key, snapshot: null, building: null, builtAt: 0 };
+    if (!guide.building && (!guide.snapshot || Date.now() - guide.snapshot.builtAt > 25 * 60000)) {
+        const url = new URL(`${base.replace(/\/+$/, '')}/xmltv.php`);
+        url.searchParams.set('username', username);
+        url.searchParams.set('password', query.get('password') || '');
+        const now = Date.now();
+        guide.building = fetchText(url.href, allowedOrigins, { headers: userAgent ? { 'User-Agent': userAgent } : {}, timeoutMs: 60000 })
+            .then((text) => { guide.snapshot = parseXmltv(text, now - 3600000, now + 12 * 3600000); })
+            .catch((e) => { guide.error = String(e?.message || e); })
+            .finally(() => { guide.building = null; });
+        // Like a real file, the answer is not instant: the first reply says "building".
+        await new Promise((r) => setTimeout(r, 0));
+    }
+    const payload = { state: guide.snapshot ? 'ready' : guide.building ? 'building' : guide.error ? 'error' : 'idle' };
+    if (guide.snapshot) {
+        payload.ageMs = Date.now() - guide.snapshot.builtAt;
+        payload.channelCount = guide.snapshot.channels.size;
+        payload.truncated = false;
+        if (action === 'xmltv_guide_read') {
+            const out = {};
+            for (const id of (query.get('ids') || '').split(',').filter(Boolean)) {
+                const kept = guide.snapshot.channels.get(id.trim().toLowerCase());
+                if (kept) out[id] = kept;
+            }
+            payload.channels = out;
+        }
+    }
+    return json(res, 200, { action, payload });
 }
 
 function describeConnectionFailure(error) {

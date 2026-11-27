@@ -224,6 +224,32 @@ createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify(body));
     }
+    if (url.pathname === '/xmltv.php') {
+        // Whole-guide file: programmes for the channels of the first live category, around now.
+        if ((q.get('username') || '') !== 'user' || (q.get('password') || '') !== 'pass') {
+            res.writeHead(403);
+            return res.end('Invalid');
+        }
+        const stamp = (ms) => {
+            const d = new Date(ms);
+            const p = (n) => String(n).padStart(2, '0');
+            return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}00 +0000`;
+        };
+        const hour = 3600000;
+        const base = Math.floor(Date.now() / hour) * hour;
+        const parts = ['<?xml version="1.0" encoding="UTF-8"?>', '<tv>'];
+        for (const stream of liveStreams.filter((s) => s.category_id === liveCategories[0].category_id)) {
+            parts.push(`<channel id="${stream.epg_channel_id}"><display-name>${stream.name}</display-name></channel>`);
+            for (let h = -2; h < 10; h++) {
+                parts.push(
+                    `<programme start="${stamp(base + h * hour)}" stop="${stamp(base + (h + 1) * hour)}" channel="${stream.epg_channel_id}"><title>Show ${h + 3} &amp; more</title><desc>Bulk guide programme ${h + 3}</desc></programme>`
+                );
+            }
+        }
+        parts.push('</tv>');
+        res.writeHead(200, { 'Content-Type': 'application/xml' });
+        return res.end(parts.join('\n'));
+    }
     if (url.pathname === '/sample.m3u') {
         res.writeHead(200, { 'Content-Type': 'audio/x-mpegurl' });
         return res.end(sampleM3u());

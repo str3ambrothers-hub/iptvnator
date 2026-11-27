@@ -107,6 +107,34 @@ public class HttpFetcher {
         }
     }
 
+    /** Stops a stream that grows past {@code limit} bytes. */
+    private static final class CappedInput extends FilterInputStream {
+        private final long limit;
+        private long count;
+
+        CappedInput(InputStream in, long limit) {
+            super(in);
+            this.limit = limit;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            if (b != -1 && ++count > limit) throw new TooLargeException();
+            return b;
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            int read = super.read(buffer, offset, length);
+            if (read > 0) {
+                count += read;
+                if (count > limit) throw new TooLargeException();
+            }
+            return read;
+        }
+    }
+
     public static final class Result {
         public final int status;
         public final String body;
@@ -175,11 +203,35 @@ public class HttpFetcher {
         return fetch(url, headers, timeoutMs, new RequestProgress(), Math.min(limit, MAX_BODY_BYTES));
     }
 
+    /** Receives a provider's answer as a stream (already decoded), for answers too big to hold. */
+    public interface StreamConsumer {
+        void consume(InputStream in) throws IOException;
+    }
+
+    /**
+     * GET and hand the decoded body to {@code consumer} as it arrives, never holding it whole. For
+     * the provider's guide file (XMLTV), which can be tens of MB. A body over {@code limit} bytes
+     * (after decoding) fails with ERR_RESPONSE_TOO_LARGE.
+     */
+    public void stream(String url, Map<String, String> headers, int timeoutMs, long limit, StreamConsumer consumer) throws ProviderException {
+        RequestProgress progress = new RequestProgress();
+        try {
+            fetch(url, headers, timeoutMs, progress, limit, consumer);
+        } catch (ProviderException failure) {
+            failure.initialResponded |= progress.initialResponded;
+            throw failure;
+        }
+    }
+
     public Result testConnection(String url, Map<String, String> headers, int timeoutMs) throws ProviderException {
         return get(url, headers, timeoutMs);
     }
 
     private BinaryResult fetch(String url, Map<String, String> headers, int timeoutMs, RequestProgress progress, long limit) throws ProviderException {
+        return fetch(url, headers, timeoutMs, progress, limit, null);
+    }
+
+    private BinaryResult fetch(String url, Map<String, String> headers, int timeoutMs, RequestProgress progress, long limit, StreamConsumer sink) throws ProviderException {
         Set<String> visited = new HashSet<String>();
         String current = url;
         for (int redirects = 0; ; redirects++) {
@@ -266,6 +318,11 @@ public class HttpFetcher {
                 try {
                     EncodedBody wire = compressed ? new EncodedBody(in, declared, limit) : null;
                     if (wire != null) in = gzip ? new GZIPInputStream(wire) : new InflaterInputStream(wire);
+                    if (sink != null) {
+                        sink.consume(new CappedInput(in, limit));
+                        if (wire != null) wire.requireComplete();
+                        return new BinaryResult(status, new byte[0], contentType);
+                    }
                     byte[] body = readAll(in, compressed ? -1 : declared, limit);
                     if (wire != null) wire.requireComplete();
                     return new BinaryResult(status, body, contentType);
