@@ -2375,6 +2375,7 @@
         document.documentElement.classList.add('tv-shell');
         if (killSwitchOff('guide-trim')) document.documentElement.classList.add('guide-trim-off');
         if (killSwitchOff('guide-row-name')) document.documentElement.classList.add('guide-rowname-off');
+        if (killSwitchOff('guide-channel-width')) document.documentElement.classList.add('guide-chanwidth-off');
         if (isAndroid) document.documentElement.classList.add('android-tv-shell');
         document.body.classList.add('tv-shell');
         installStyle();

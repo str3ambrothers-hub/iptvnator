@@ -1619,6 +1619,12 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     check(epgOn, 'the "Only with EPG" toggle starts on in the TV app');
     check(toggle && toggle[0] > 10 && toggle[1] > 10, 'the "Only with EPG" toggle is big enough for the remote to focus: ' + JSON.stringify(toggle));
     check(guide.rows > 0, 'the guide lists channel rows: ' + guide.rows);
+    const widths = await page.evaluate(() => {
+        const names = document.querySelectorAll('.epg-guide-row__name b');
+        if (names[0]) names[0].textContent = 'USA A Very Long Channel Name That Goes On And On And On Forever';
+        return [...document.querySelectorAll('.epg-guide-row__channel-cell')].map((el) => Math.round(el.getBoundingClientRect().width));
+    });
+    check(widths.length > 0 && new Set(widths).size === 1, 'every channel cell is the same width, even with a very long name: ' + JSON.stringify([...new Set(widths)]));
     const trimmed = await page.evaluate(() => ['.guide-toolbar__day', '.guide-toolbar__now', '.guide-toolbar__scope', '.guide-toolbar__input', '.now-playing__actions']
         .map((q) => [q, [...document.querySelectorAll(q)].filter((el) => el.getBoundingClientRect().width > 0).length]).filter((x) => x[1] > 0));
     check(trimmed.length === 0, 'the guide hides the day/Now/category row, the search boxes and the close/collapse buttons: ' + JSON.stringify(trimmed));

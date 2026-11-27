@@ -308,3 +308,23 @@
 :host-context(html.tv-shell:not(.guide-rowname-off)) .epg-guide-row__name small {
     display: none;
 }
+
+// TV app: every channel cell is exactly as wide as the column header, however long the name is
+// (switch: `guide-channel-width`).
+:host-context(html.tv-shell:not(.guide-chanwidth-off)) .epg-guide-row__channel-cell {
+    flex: 0 0 var(--epg-guide-channel-col, 232px);
+    width: var(--epg-guide-channel-col, 232px);
+    min-width: var(--epg-guide-channel-col, 232px);
+    max-width: var(--epg-guide-channel-col, 232px);
+    overflow: hidden;
+
+    .epg-guide-row__channel {
+        width: 100%;
+        min-width: 0;
+        overflow: hidden;
+    }
+    .epg-guide-row__name {
+        min-width: 0;
+        overflow: hidden;
+    }
+}
