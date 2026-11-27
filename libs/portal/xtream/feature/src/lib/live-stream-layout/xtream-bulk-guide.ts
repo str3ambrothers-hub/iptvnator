@@ -93,6 +93,10 @@ export class XtreamBulkGuide {
         const id = epgChannelId?.trim();
         if (!id || !bulkGuideEnabled() || Date.now() < this.failedUntil) return undefined;
         this.ensure(credentials);
+        // While the file is still coming, wait (rows on screen briefly, the background scan longer)
+        // rather than judging channels by the slow per-channel answers: those would mark channels
+        // the file covers as "no guide".
+        if (this.state === 'starting') await this.settled(credentials, undefined, background ? 90_000 : 15_000);
         if (this.state !== 'ready') return undefined;
         if (Date.now() - this.memoAt > MEMO_MS) this.expire(credentials);
         const key = id.toLowerCase();
@@ -133,6 +137,7 @@ export class XtreamBulkGuide {
 
     private async poll(credentials: XtreamCredentials, owner: string): Promise<void> {
         const began = Date.now();
+        let polls = 0;
         const fail = () => {
             if (this.owner !== owner) return;
             this.state = 'idle';
@@ -151,7 +156,8 @@ export class XtreamBulkGuide {
                     return;
                 }
                 if (reply?.state === 'error' || Date.now() - began > GIVE_UP_MS) return fail();
-                await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+                // Quick first checks (a copy that is already built answers at once), then slower.
+                await new Promise((resolve) => setTimeout(resolve, ++polls < 5 ? 600 : POLL_MS));
             }
         } catch {
             fail();
