@@ -38,6 +38,8 @@ final class PreviewPlayer {
     private String url;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable report;
+    private int retries;
+    private static final int MAX_RETRIES = 4;
 
     PreviewPlayer(Context context, FrameLayout root) {
         this.context = context;
@@ -68,28 +70,10 @@ final class PreviewPlayer {
         else view.setLayoutParams(lp);
         view.setVisibility(View.VISIBLE);
         if (same) return; // only moved
-        release();
-        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(20_000)
-            .setUserAgent("VLC/3.0.20 LibVLC/3.0.20");
-        player = new ExoPlayer.Builder(context)
-            .setMediaSourceFactory(new DefaultMediaSourceFactory(context).setDataSourceFactory(http))
-            .build();
-        player.addListener(new Player.Listener() {
-            @Override
-            public void onPlayerError(PlaybackException error) {
-                Log.w(ShellApp.TAG, "preview failed: " + error.getErrorCodeName() + " " + streamUrl.replaceAll("//[^/]*/.*", "//…"));
-                Toast.makeText(context.getApplicationContext(), "Preview: " + error.getErrorCodeName(), Toast.LENGTH_LONG).show();
-            }
-        });
-        view.setPlayer(player);
-        player.setMediaItem(MediaItem.fromUri(Uri.parse(streamUrl)));
-        player.setPlayWhenReady(true);
-        player.prepare();
-        final ExoPlayer watched = player;
+        retries = 0;
+        open(streamUrl);
         final int w = width, h = height, l = left, t = top;
+        final ExoPlayer watched = player;
         if (report != null) handler.removeCallbacks(report);
         report = new Runnable() {
             @Override public void run() {
@@ -103,6 +87,54 @@ final class PreviewPlayer {
             }
         };
         handler.postDelayed(report, 5000);
+    }
+
+    /** Builds a fresh player for the stream (also used to reconnect after a failure). */
+    private void open(final String streamUrl) {
+        release();
+        DefaultHttpDataSource.Factory http = new DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(20_000)
+            .setUserAgent("VLC/3.0.20 LibVLC/3.0.20");
+        final ExoPlayer[] thisPlayer = new ExoPlayer[1];
+        player = new ExoPlayer.Builder(context)
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(context).setDataSourceFactory(http))
+            .build();
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onIsPlayingChanged(boolean playing) {
+                if (playing) retries = 0;
+            }
+
+            @Override
+            public void onPlayerError(PlaybackException error) {
+                Log.w(ShellApp.TAG, "preview failed: " + error.getErrorCodeName() + " " + streamUrl.replaceAll("//[^/]*/.*", "//…"));
+                if (player != thisPlayer[0]) return;
+                // The provider drops a live connection now and then (or limits connections): a fresh
+                // connection a moment later usually works, so the picture comes back on its own.
+                if (retries < MAX_RETRIES && streamUrl.equals(url)) {
+                    retries++;
+                    handler.postDelayed(new Runnable() {
+                        @Override public void run() {
+                            if (player == thisPlayer[0] && streamUrl.equals(url) && view != null) open(streamUrl);
+                        }
+                    }, 2000L * retries);
+                    return;
+                }
+                String why = error.getErrorCodeName();
+                Throwable c = error.getCause();
+                if (c instanceof androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) {
+                    why += " " + ((androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) c).responseCode;
+                }
+                Toast.makeText(context.getApplicationContext(), "Preview: " + why, Toast.LENGTH_LONG).show();
+            }
+        });
+        thisPlayer[0] = player;
+        view.setPlayer(player);
+        player.setMediaItem(MediaItem.fromUri(Uri.parse(streamUrl)));
+        player.setPlayWhenReady(true);
+        player.prepare();
     }
 
     /** Removes the picture and frees the decoder and the provider connection. */
