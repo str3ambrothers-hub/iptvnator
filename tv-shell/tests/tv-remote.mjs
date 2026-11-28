@@ -25,7 +25,7 @@ mkdirSync(SHOTS, { recursive: true });
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, hasTouch: false });
 // The sections below test the classic Live TV screen; the programme-guide screen has its own section at the end.
-await context.addInitScript(() => { try { if (localStorage.getItem('tv-guide') === null) localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
+await context.addInitScript(() => { try { if (localStorage.getItem('tv-guide') === null) localStorage.setItem('tv-guide', 'off'); localStorage.setItem('tv-login', 'off'); } catch (e) { /* ignore */ } });
 const page = await context.newPage();
 const consoleErrors = [];
 const bridgeLogs = [];
@@ -1710,6 +1710,26 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     await page.evaluate(() => window.__tvShell.back());
     await page.waitForTimeout(1000);
     await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
+}
+console.log('13. TV sign-in: only a username and a password, on the built-in servers');
+{
+    const login = await context.newPage();
+    await login.addInitScript(() => { try { localStorage.removeItem('tv-login'); } catch (e) { /* ignore */ } });
+    await login.goto(URL_ + '/workspace/sources', { waitUntil: 'networkidle' });
+    await login.waitForFunction(() => window.__tvShell);
+    await login.getByRole('button', { name: /Add M3U/i }).click();
+    const dlg = login.locator('mat-dialog-container');
+    await dlg.waitFor({ state: 'visible' });
+    await login.waitForTimeout(500);
+    const seen = await dlg.evaluate((el) => ({
+        heading: (el.querySelector('h2, [mat-dialog-title], .app-dialog__title')?.textContent || '').trim(),
+        fields: [...el.querySelectorAll('input')].map((i) => i.id || i.type),
+        methodTiles: el.querySelectorAll('.apd-method').length,
+        signIn: [...el.querySelectorAll('button')].some((b) => /^\s*Sign in\s*$/.test(b.textContent || '')),
+    }));
+    check(seen.fields.join() === 'username,password' && seen.methodTiles === 0 && seen.signIn,
+        'the sign-in has just a username, a password and a Sign in button: ' + JSON.stringify(seen));
+    await login.close();
 }
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
 process.exitCode = failures ? 1 : 0;

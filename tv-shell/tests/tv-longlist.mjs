@@ -18,7 +18,7 @@ const SHOTS = opt('--shots', join(dirname(fileURLToPath(import.meta.url)), 'shot
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, hasTouch: true });
 // The mock channels play from /movie/ paths; this suite checks the page player, not the built-in one.
-await page.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); } catch (e) { /* ignore */ } });
+await page.addInitScript(() => { try { localStorage.setItem('native-movies', 'off'); localStorage.setItem('tv-login', 'off'); } catch (e) { /* ignore */ } });
 page.on('console', (m) => { if (m.text().startsWith('[tvshell] bridge')) console.log('  ' + m.text()); });
 let failures = 0;
 const check = (c, m) => { if (!c) failures++; console.log((c ? '  ✓ ' : '  ✗ ') + m); };
