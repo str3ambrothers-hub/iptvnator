@@ -266,7 +266,8 @@ jobs:
 
       # One fixed address that always serves the newest build, short enough to type
       # into the Downloader app on a TV:
-      # https://github.com/<owner>/<repo>/releases/download/tv-shell-latest/iptvnator-tv.apk
+      # https://github.com/<owner>/<repo>/releases/download/tv-shell-latest/streambros-tv.apk
+      # The old name (iptvnator-tv.apk) is published too, so a short link made before the rename keeps working.
       - name: Refresh the fixed "latest" link
         shell: bash
         env:
@@ -276,13 +277,14 @@ jobs:
           APK_VERSION: ${{ needs.build.outputs.apk_version }}
         run: |
           set -euo pipefail
+          cp "dist/${APK_NAME}" dist/streambros-tv.apk
           cp "dist/${APK_NAME}" dist/iptvnator-tv.apk
           gh release delete tv-shell-latest --cleanup-tag --yes 2>/dev/null || true
-          gh release create tv-shell-latest dist/iptvnator-tv.apk \
+          gh release create tv-shell-latest dist/streambros-tv.apk dist/iptvnator-tv.apk \
             --target "$GITHUB_SHA" \
             --prerelease --latest=false \
             --title "Newest Android TV build (${APK_VERSION}, build ${GITHUB_RUN_NUMBER})" \
-            --notes "Always the newest build. Download link: https://github.com/${GITHUB_REPOSITORY}/releases/download/tv-shell-latest/iptvnator-tv.apk"
+            --notes "Always the newest build. Download link: https://github.com/${GITHUB_REPOSITORY}/releases/download/tv-shell-latest/streambros-tv.apk"
           # GitHub sometimes leaves a release created straight after a delete as a draft, and a draft
           # has no public download link (a 404). Make sure it is published.
           for attempt in 1 2 3 4 5; do
@@ -290,4 +292,4 @@ jobs:
             gh release edit tv-shell-latest --draft=false --prerelease --latest=false || true
             sleep 3
           done
-          echo "Fixed link: https://github.com/${GITHUB_REPOSITORY}/releases/download/tv-shell-latest/iptvnator-tv.apk"
+          echo "Fixed link: https://github.com/${GITHUB_REPOSITORY}/releases/download/tv-shell-latest/streambros-tv.apk"
