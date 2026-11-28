@@ -34,6 +34,7 @@
                 data-test-id="rail-server-status"
             >
                 <mat-icon aria-hidden="true">{{ serverIcon() }}</mat-icon>
+                <span class="rail-label" aria-hidden="true">{{ serverLabelKey() | translate }}</span>
                 <span class="rail-server__dot" aria-hidden="true"></span>
             </a>
         }
@@ -46,6 +47,7 @@
             [attr.aria-label]="'WORKSPACE.SHELL.OPEN_SETTINGS' | translate"
         >
             <mat-icon aria-hidden="true">settings</mat-icon>
+            <span class="rail-label" aria-hidden="true">{{ 'WORKSPACE.SHELL.RAIL_SETTINGS' | translate }}</span>
         </a>
     </div>
 </aside>

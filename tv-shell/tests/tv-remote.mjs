@@ -1737,6 +1737,22 @@ console.log('14. "Loading content" screen while the provider guide file is read'
         await loadingPage.close();
     }
 }
+console.log('15. side menu: a text under every icon');
+{
+    const railPage = await context.newPage();
+    await railPage.goto(URL_ + '/workspace/sources', { waitUntil: 'networkidle' });
+    await railPage.waitForFunction(() => window.__tvShell);
+    await railPage.waitForTimeout(600);
+    const rail = await railPage.evaluate(() => {
+        const labels = [...document.querySelectorAll('.app-rail .rail-label')];
+        const shown = labels.filter((l) => l.getBoundingClientRect().width > 0 && (l.textContent || '').trim().length > 0);
+        const aside = document.querySelector('.app-rail');
+        return { icons: document.querySelectorAll('.app-rail a').length, labelled: shown.length, texts: shown.map((l) => l.textContent.trim()), width: Math.round(aside ? aside.getBoundingClientRect().width : 0) };
+    });
+    check(rail.icons > 0 && rail.labelled === rail.icons && rail.width >= 80,
+        'every side-menu icon has its text and the menu is wide enough: ' + JSON.stringify(rail));
+    await railPage.close();
+}
 console.log('13. TV sign-in: only a username and a password, on the built-in servers');
 {
     // A fresh browser profile: no playlists yet, so the sources page offers the "Add" cards.

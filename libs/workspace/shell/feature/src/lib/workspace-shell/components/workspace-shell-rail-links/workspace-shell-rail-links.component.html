@@ -13,6 +13,7 @@
             [class.is-active]="activeClass() === 'is-active' && isActive(link)"
         >
             <mat-icon aria-hidden="true">{{ resolveIcon(link) }}</mat-icon>
+            <span class="rail-label" aria-hidden="true">{{ link.tooltip }}</span>
         </a>
     }
 </nav>
