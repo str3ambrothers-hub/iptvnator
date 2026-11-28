@@ -1713,8 +1713,9 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
 }
 console.log('13. TV sign-in: only a username and a password, on the built-in servers');
 {
-    const login = await context.newPage();
-    await login.addInitScript(() => { try { localStorage.removeItem('tv-login'); } catch (e) { /* ignore */ } });
+    // A fresh browser profile: no playlists yet, so the sources page offers the "Add" cards.
+    const loginContext = await browser.newContext({ viewport: { width: 1280, height: 720 }, serviceWorkers: 'block' });
+    const login = await loginContext.newPage();
     await login.goto(URL_ + '/workspace/sources', { waitUntil: 'networkidle' });
     await login.waitForFunction(() => window.__tvShell);
     await login.getByRole('button', { name: /Add M3U/i }).click();
@@ -1729,7 +1730,7 @@ console.log('13. TV sign-in: only a username and a password, on the built-in ser
     }));
     check(seen.fields.join() === 'username,password' && seen.methodTiles === 0 && seen.signIn,
         'the sign-in has just a username, a password and a Sign in button: ' + JSON.stringify(seen));
-    await login.close();
+    await loginContext.close();
 }
 console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
 process.exitCode = failures ? 1 : 0;
