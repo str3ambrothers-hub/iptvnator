@@ -192,9 +192,11 @@ public class NativePlayerActivity extends android.app.Activity {
         // providers answer that ranged request with the wrong bytes, which breaks the parser.
         DefaultExtractorsFactory extractors = new DefaultExtractorsFactory();
         if (sourceRetries >= 2) extractors.setMatroskaExtractorFlags(MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES);
-        player = new ExoPlayer.Builder(this, renderers)
-            .setMediaSourceFactory(new DefaultMediaSourceFactory(this, extractors).setDataSourceFactory(http))
-            .build();
+        ExoPlayer.Builder builder = new ExoPlayer.Builder(this, renderers)
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(this, extractors).setDataSourceFactory(http));
+        androidx.media3.exoplayer.LoadControl buffer = PlayerBuffer.loadControl(live);
+        if (buffer != null) builder.setLoadControl(buffer);
+        player = builder.build();
         player.addListener(new Player.Listener() {
             @Override
             public void onPlayerError(PlaybackException error) {

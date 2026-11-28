@@ -1753,6 +1753,28 @@ console.log('15. side menu: a text under every icon');
         'every side-menu icon has its text and the menu is wide enough: ' + JSON.stringify(rail));
     await railPage.close();
 }
+console.log('16. Settings: buffer size choice');
+{
+    const bufPage = await context.newPage();
+    await bufPage.goto(URL_ + '/workspace/settings/playback', { waitUntil: 'networkidle' });
+    await bufPage.waitForFunction(() => window.__tvShell);
+    await bufPage.waitForTimeout(600);
+    const select = bufPage.locator('[data-test-id="select-player-buffer"]');
+    check((await select.count()) === 1, 'the Buffer choice is on the Playback settings page');
+    if ((await select.count()) === 1) {
+        await select.click();
+        await bufPage.getByRole('option', { name: 'Large', exact: true }).click();
+        await bufPage.waitForTimeout(300);
+        const saved = await bufPage.evaluate(() => localStorage.getItem('player-buffer'));
+        check(saved === 'large', 'choosing Large is saved: ' + saved);
+    }
+    await bufPage.evaluate(() => localStorage.setItem('buffer-setting', 'off'));
+    await bufPage.reload({ waitUntil: 'networkidle' });
+    await bufPage.waitForTimeout(600);
+    check((await bufPage.locator('[data-test-id="select-player-buffer"]').count()) === 0, 'the kill switch hides the Buffer choice');
+    await bufPage.evaluate(() => { localStorage.removeItem('buffer-setting'); localStorage.removeItem('player-buffer'); });
+    await bufPage.close();
+}
 console.log('13. TV sign-in: only a username and a password, on the built-in servers');
 {
     // A fresh browser profile: no playlists yet, so the sources page offers the "Add" cards.

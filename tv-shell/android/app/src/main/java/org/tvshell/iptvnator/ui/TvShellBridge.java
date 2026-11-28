@@ -55,6 +55,9 @@ final class TvShellBridge {
             case "setServers":
                 ServerPair.set(stringAt(args, 1), stringAt(args, 2));
                 break;
+            case "setBuffer":
+                PlayerBuffer.set(stringAt(args, 1));
+                break;
             case "previewStop":
                 activity.previewStop();
                 break;

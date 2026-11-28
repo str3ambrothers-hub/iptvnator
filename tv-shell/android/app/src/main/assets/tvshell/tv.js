@@ -65,6 +65,11 @@
         try {
             if (localStorage.getItem('server-flip') !== 'off' && typeof window.__tvServers === 'function') pair = window.__tvServers();
         } catch (e) { /* none */ }
+        // Buffer size chosen in Settings (Playback). Kill switch: localStorage['buffer-setting'] = 'off'.
+        try {
+            var level = localStorage.getItem('buffer-setting') === 'off' ? 'normal' : (localStorage.getItem('player-buffer') || 'normal');
+            bridge.postMessage(JSON.stringify(['setBuffer', level]));
+        } catch (e) { /* ignore */ }
         try { bridge.postMessage(JSON.stringify(['setServers', pair ? pair.active : '', pair ? pair.other : ''])); } catch (e) { /* ignore */ }
     }
     function native(method) {

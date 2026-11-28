@@ -62,6 +62,35 @@ export class SettingsPlaybackSectionComponent {
 
     readonly form = input.required<FormGroup>();
 
+    /** TV app only: how far ahead the built-in player downloads (kill switch: localStorage['buffer-setting']='off'). */
+    readonly showBuffer = (() => {
+        try {
+            return (
+                document.documentElement.classList.contains('tv-shell') &&
+                localStorage.getItem('buffer-setting') !== 'off'
+            );
+        } catch {
+            return false;
+        }
+    })();
+    readonly bufferLevel = signal<string>(
+        (() => {
+            try {
+                return localStorage.getItem('player-buffer') || 'normal';
+            } catch {
+                return 'normal';
+            }
+        })()
+    );
+    setBufferLevel(level: string): void {
+        this.bufferLevel.set(level);
+        try {
+            localStorage.setItem('player-buffer', level);
+        } catch {
+            /* not saved */
+        }
+    }
+
     readonly players = input.required<SettingsPlayerOption[]>();
     readonly streamFormatEnum = input.required<typeof StreamFormat>();
     readonly isDesktop = input(false);

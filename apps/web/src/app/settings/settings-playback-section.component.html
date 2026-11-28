@@ -840,4 +840,42 @@
             </div>
         </section>
     }
+    @if (showBuffer) {
+        <section class="settings-section">
+            <div class="settings-section__header">
+                <h3>Buffer</h3>
+            </div>
+            <div class="settings-card">
+                <div class="setting-item" data-setting-id="player-buffer">
+                    <div class="setting-item__meta">
+                        <h4 id="player-buffer-label">Buffer size</h4>
+                        <p>
+                            How far ahead the player downloads. A bigger buffer
+                            helps when playback keeps stopping and starting.
+                            Live channels use smaller values so they stay
+                            close to the broadcast.
+                        </p>
+                    </div>
+                    <div class="setting-item__control">
+                        <mat-form-field
+                            class="settings-select"
+                            appearance="outline"
+                            subscriptSizing="dynamic"
+                        >
+                            <mat-select
+                                [value]="bufferLevel()"
+                                (selectionChange)="setBufferLevel($event.value)"
+                                aria-labelledby="player-buffer-label"
+                                data-test-id="select-player-buffer"
+                            >
+                                <mat-option value="normal">Normal</mat-option>
+                                <mat-option value="large">Large</mat-option>
+                                <mat-option value="xlarge">Extra large</mat-option>
+                            </mat-select>
+                        </mat-form-field>
+                    </div>
+                </div>
+            </div>
+        </section>
+    }
 </section>
