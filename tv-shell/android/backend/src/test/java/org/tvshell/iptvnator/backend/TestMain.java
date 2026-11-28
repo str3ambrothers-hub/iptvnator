@@ -33,7 +33,7 @@ public final class TestMain {
         Class<?>[] suites = {
             ProtocolDiscoveryTest.class, DiagnosticRedactorTest.class, JsonTest.class, M3uParserTest.class, KodiPropTest.class, PortalUrlsTest.class,
             StalkerIdentityTest.class, WebBackendTest.class, PlaylistRecordTest.class, ShellSiteTest.class, HttpFetcherTest.class,
-            ImageCacheTest.class, XmltvGuideTest.class
+            ImageCacheTest.class, XmltvGuideTest.class, StreamingListsTest.class
         };
         int passed = 0;
         List<String> failures = new ArrayList<String>();

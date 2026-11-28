@@ -1,0 +1,54 @@
+name: Refresh streaming lists
+
+# Once a week (and on demand) one build machine downloads which titles each streaming service
+# carries, using the TMDB_API_KEY secret, and publishes the single file as an asset of the
+# `streaming-lists` release. The TV app downloads that file (no token involved), so only this
+# job ever talks to TMDB. Note: GitHub runs scheduled workflows from the default branch only.
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-streaming-lists
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tv-shell/scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download the lists
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          node tv-shell/scripts/fetch-streaming-lists.mjs out CA,US
+          test -f out/assets/streaming/streaming.json
+      - name: Check the file is a real one
+        run: |
+          set -euo pipefail
+          node -e '
+            const f = JSON.parse(require("fs").readFileSync("out/assets/streaming/streaming.json", "utf8"));
+            const n = (f.services || []).filter((s) => (s.movie || []).length + (s.tv || []).length > 0).length;
+            console.log("services with titles:", n, "generatedAt:", f.generatedAt);
+            if (n < 3) { console.error("Too few services have titles; keeping the previous published file."); process.exit(1); }
+          '
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view streaming-lists >/dev/null 2>&1 || gh release create streaming-lists \
+            --title "Streaming lists" --notes "Weekly list of titles per streaming service. Replaced automatically." --latest=false
+          gh release upload streaming-lists out/assets/streaming/streaming.json --clobber

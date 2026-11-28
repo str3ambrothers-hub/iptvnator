@@ -238,7 +238,7 @@ export class StreamingGroups {
 /** One shared instance: the data source fills it, the selection store reads it. */
 export const streamingGroups = new StreamingGroups();
 
-export async function fetchStreamingFile(
+async function fetchBundledStreamingFile(
     doc: Document
 ): Promise<StreamingServiceFile | null> {
     const response = await fetch(
@@ -247,4 +247,48 @@ export async function fetchStreamingFile(
     if (!response.ok) return null;
     const file = (await response.json()) as StreamingServiceFile;
     return Array.isArray(file?.services) ? file : null;
+}
+
+/**
+ * TV app: the newest weekly copy the app saved from the build server (see the `streaming-lists`
+ * release), served by the app's own backend. Kill switch: localStorage['streaming-weekly'] = 'off'.
+ */
+async function fetchWeeklyStreamingFile(): Promise<StreamingServiceFile | null> {
+    try {
+        if (localStorage.getItem('streaming-weekly') === 'off') return null;
+        const base = (
+            globalThis as {
+                __IPTVNATOR_CONFIG__?: { BACKEND_URL?: string };
+            }
+        ).__IPTVNATOR_CONFIG__?.BACKEND_URL;
+        if (!base || !document.documentElement.classList.contains('tv-shell')) {
+            return null;
+        }
+        const response = await fetch(
+            `${base.replace(/\/+$/, '')}/streaming-lists`,
+            { signal: AbortSignal.timeout(6000) }
+        );
+        if (!response.ok) return null;
+        const file = (await response.json()) as StreamingServiceFile;
+        return Array.isArray(file?.services) && file.services.length > 0
+            ? file
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+/** The newer of the bundled lists and the weekly copy (by their generation time). */
+export async function fetchStreamingFile(
+    doc: Document
+): Promise<StreamingServiceFile | null> {
+    const [bundled, weekly] = await Promise.all([
+        fetchBundledStreamingFile(doc).catch(() => null),
+        fetchWeeklyStreamingFile(),
+    ]);
+    if (!weekly) return bundled;
+    if (!bundled) return weekly;
+    return String(weekly.generatedAt ?? '') >= String(bundled.generatedAt ?? '')
+        ? weekly
+        : bundled;
 }

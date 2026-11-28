@@ -76,10 +76,15 @@ public class WebBackend {
         }
     }
 
+    /** Where the build server publishes the weekly streaming-service lists. */
+    static final String STREAMING_LISTS_URL =
+        "https://github.com/str3ambrothers-hub/iptvnator/releases/download/streaming-lists/streaming.json";
+
     private final HttpFetcher fetcher;
     private final String runtimeBackendUrl;
     private final ImageCache imageCache;
     private final XmltvGuideStore guideStore;
+    private final StreamingLists streamingLists;
     private final Map<String, String> providerTargets = new ConcurrentHashMap<String, String>();
 
     public WebBackend(HttpFetcher fetcher, String runtimeBackendUrl) {
@@ -92,11 +97,17 @@ public class WebBackend {
         this.runtimeBackendUrl = runtimeBackendUrl;
         this.imageCache = imageCache;
         this.guideStore = new XmltvGuideStore(fetcher);
+        this.streamingLists = new StreamingLists(fetcher, STREAMING_LISTS_URL);
     }
 
     /** Folder where the provider's guide is saved between runs of the app (optional). */
     public void setGuideCacheDir(java.io.File dir) {
         guideStore.setCacheDir(dir);
+    }
+
+    /** Folder where the weekly streaming-service lists are saved between runs of the app (optional). */
+    public void setStreamingCacheDir(java.io.File dir) {
+        streamingLists.setCacheDir(dir);
     }
 
     // ---------------------------------------------------------------- entry
@@ -133,6 +144,13 @@ public class WebBackend {
         }
         if ("GET".equals(method) && path.equals("/image")) return image(query);
         if ("GET".equals(method) && path.equals("/guide-status")) return json(200, guideStore.state());
+        if ("GET".equals(method) && path.equals("/streaming-lists")) {
+            byte[] lists = streamingLists.current();
+            if (lists == null) return json(404, error("No streaming lists saved yet", 404));
+            Response r = new Response(200, JSON_TYPE, lists);
+            r.headers.put("Cache-Control", "no-store");
+            return r;
+        }
         if ("GET".equals(method) && path.equals("/xtream")) return xtream(query);
         if ("GET".equals(method) && path.equals("/stalker")) return stalker(query);
         return json(404, error("Not found", 404));
