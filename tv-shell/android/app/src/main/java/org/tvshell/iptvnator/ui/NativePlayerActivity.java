@@ -146,6 +146,22 @@ public class NativePlayerActivity extends android.app.Activity {
     /** Reading the stream failed (a bad or refused response, not a codec): tries made again so far. */
     private int sourceRetries;
     private static final int MAX_SOURCE_RETRIES = 2;
+    private static final long STALL_MS = 15_000;
+    private static final int MAX_SERVER_SWITCHES = 3;
+    private int serverSwitches;
+    private final android.os.Handler stallHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    /** Moves the stream to the other server of the login (main <-> backup) from where it stopped. */
+    private boolean switchServer(String failedUrl) {
+        if (isFinishing() || player == null || serverSwitches >= MAX_SERVER_SWITCHES) return false;
+        String moved = ServerPair.switchTo(failedUrl);
+        if (moved == null) return false;
+        serverSwitches++;
+        sourceRetries = 0;
+        Toast.makeText(getApplicationContext(), "Switching to the other server…", Toast.LENGTH_SHORT).show();
+        startPlayer(moved, softwareDecoders, live ? 0 : Math.max(0, player.getCurrentPosition()));
+        return true;
+    }
     private final android.os.Handler retryHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     /** The stream's formats as announced by the tracks: the player drops its own when a decoder fails. */
     private androidx.media3.common.Format seenVideo;
@@ -207,7 +223,22 @@ public class NativePlayerActivity extends android.app.Activity {
                     }, 2000);
                     return;
                 }
+                // Out of tries on this server: a login with a backup moves to the other server.
+                if (switchServer(url)) return;
                 showError(error);
+            }
+
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                stallHandler.removeCallbacksAndMessages(null);
+                if (state != Player.STATE_BUFFERING) return;
+                // Frozen: still waiting for data after a while.
+                stallHandler.postDelayed(new Runnable() {
+                    @Override public void run() {
+                        if (isFinishing() || player == null) return;
+                        if (player.getPlaybackState() == Player.STATE_BUFFERING && player.getPlayWhenReady()) switchServer(url);
+                    }
+                }, STALL_MS);
             }
 
             @Override
@@ -355,6 +386,7 @@ public class NativePlayerActivity extends android.app.Activity {
     @Override
     protected void onDestroy() {
         retryHandler.removeCallbacksAndMessages(null);
+        stallHandler.removeCallbacksAndMessages(null);
         if (player != null) {
             player.release();
             player = null;

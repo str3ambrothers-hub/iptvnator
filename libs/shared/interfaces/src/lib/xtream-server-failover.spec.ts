@@ -1,6 +1,8 @@
 import {
     activeXtreamServerUrl,
     isXtreamServerUnreachable,
+    reportXtreamServerTrouble,
+    setActiveXtreamServer,
     setXtreamBackupServer,
     withXtreamServerFailover,
 } from './xtream-server-failover';
@@ -60,5 +62,38 @@ describe('xtream server failover', () => {
         const attempt = jest.fn().mockRejectedValue({ status: 502 });
         await expect(withXtreamServerFailover(MAIN, attempt)).rejects.toBeDefined();
         expect(attempt).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays on the working server and flips to the other one only on trouble, back and forth', () => {
+        setXtreamBackupServer(MAIN, BACKUP);
+        expect(activeXtreamServerUrl(MAIN)).toBe(MAIN);
+        jest.useFakeTimers();
+        try {
+            expect(reportXtreamServerTrouble(MAIN)).toBe(BACKUP);
+            // Sticky: still the backup long after (no automatic return to the main server).
+            jest.advanceTimersByTime(60 * 60 * 1000);
+            expect(activeXtreamServerUrl(MAIN)).toBe(BACKUP);
+            expect(reportXtreamServerTrouble(MAIN)).toBe(MAIN);
+            jest.advanceTimersByTime(60 * 60 * 1000);
+            expect(activeXtreamServerUrl(MAIN)).toBe(MAIN);
+            expect(reportXtreamServerTrouble(MAIN)).toBe(BACKUP);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('counts reports that come together as one, and does nothing without a backup', () => {
+        expect(reportXtreamServerTrouble(MAIN)).toBeNull();
+        setXtreamBackupServer(MAIN, BACKUP);
+        expect(reportXtreamServerTrouble(MAIN)).toBe(BACKUP);
+        expect(reportXtreamServerTrouble(MAIN)).toBe(BACKUP);
+    });
+
+    it('follows a switch made by the built-in player', () => {
+        setXtreamBackupServer(MAIN, BACKUP);
+        setActiveXtreamServer(MAIN, BACKUP);
+        expect(activeXtreamServerUrl(MAIN)).toBe(BACKUP);
+        setActiveXtreamServer(MAIN, MAIN);
+        expect(activeXtreamServerUrl(MAIN)).toBe(MAIN);
     });
 });

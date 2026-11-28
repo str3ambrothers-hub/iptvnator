@@ -749,6 +749,8 @@ public class MainActivity extends Activity {
         webView.onResume();
         webView.resumeTimers();
         pauseWebForPlayer = false;
+        String movedTo = ServerPair.takeSwitched();
+        if (movedTo != null) js("window.__tvServerSet && window.__tvServerSet(" + org.json.JSONObject.quote(movedTo) + ")");
         js("window.__tvNativeClosed && window.__tvNativeClosed(" + NativePlayerActivity.takeZap() + ")");
         js("window.__tvShell && typeof window.__tvShell.setForeground === 'function' && window.__tvShell.setForeground(true)");
         if (errorPanel.getVisibility() != View.VISIBLE) webView.requestFocus(View.FOCUS_DOWN);

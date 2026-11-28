@@ -10,10 +10,27 @@ import { normalizeXtreamServerUrl } from './xtream-portal.utils';
  * Kill switch: localStorage['server-failover'] = 'off'.
  */
 const STORAGE_KEY = 'xtream-backup-servers';
-/** After switching to the backup, try the main server again after this long. */
+/** After switching to the backup, try the main server again after this long (only without sticky mode). */
 const RETRY_MAIN_AFTER_MS = 15 * 60 * 1000;
+/** Two trouble reports this close together count as one. */
+const FLIP_DEBOUNCE_MS = 10_000;
+
+/**
+ * Sticky mode (default): the server that works stays in use until playback runs into trouble (the
+ * stream does not load or freezes), then the app moves to the other one, and so on. Without it the
+ * main server is tried again after 15 minutes. Kill switch: localStorage['server-sticky'] = 'off'.
+ */
+function stickyOn(): boolean {
+    try {
+        return localStorage.getItem('server-sticky') !== 'off';
+    } catch {
+        return true;
+    }
+}
 
 const switched = new Map<string, number>();
+let lastPrimary: string | null = null;
+let lastFlipAt = 0;
 
 function failoverOff(): boolean {
     try {
@@ -67,11 +84,13 @@ export function setXtreamBackupServer(
 
 /** Servers to try, in order: the one that worked last first, then the other. */
 export function xtreamServerCandidates(primaryUrl: string): string[] {
+    installGlobals();
     const primary = normalized(primaryUrl) ?? primaryUrl;
     const backup = failoverOff() ? null : getXtreamBackupServer(primary);
     if (!backup) return [primary];
+    lastPrimary = primary;
     const since = switched.get(primary);
-    if (since !== undefined && Date.now() - since < RETRY_MAIN_AFTER_MS) {
+    if (since !== undefined && (stickyOn() || Date.now() - since < RETRY_MAIN_AFTER_MS)) {
         return [backup, primary];
     }
     switched.delete(primary);
@@ -129,4 +148,62 @@ export async function withXtreamServerFailover<T>(
         }
     }
     throw new Error('No server to try');
+}
+
+/**
+ * Playback ran into trouble on the server in use: move to the other one (main <-> backup) and return
+ * its address, or `null` when there is no backup. Reports within a few seconds count as one.
+ */
+export function reportXtreamServerTrouble(primaryUrl: string): string | null {
+    const primary = normalized(primaryUrl) ?? primaryUrl;
+    if (failoverOff() || !getXtreamBackupServer(primary)) return null;
+    const sinceFlip = Date.now() - lastFlipAt;
+    if (sinceFlip < 0 || sinceFlip >= FLIP_DEBOUNCE_MS) {
+        lastFlipAt = Date.now();
+        if (switched.has(primary)) switched.delete(primary);
+        else switched.set(primary, Date.now());
+    }
+    return activeXtreamServerUrl(primary);
+}
+
+/** The app's player moved to `activeUrl` by itself: follow it, so new links are built on that server. */
+export function setActiveXtreamServer(primaryUrl: string, activeUrl: string): void {
+    const primary = normalized(primaryUrl) ?? primaryUrl;
+    const backup = getXtreamBackupServer(primary);
+    const active = normalized(activeUrl);
+    if (!backup || !active) return;
+    if (active === primary) switched.delete(primary);
+    else if (active === backup && !switched.has(primary)) switched.set(primary, Date.now());
+}
+
+/** For the TV app's built-in player: which server is in use and which is the other one. */
+export function describeXtreamServers(
+    primaryUrl: string
+): { active: string; other: string; role: 'main' | 'backup' } | null {
+    const primary = normalized(primaryUrl) ?? primaryUrl;
+    const backup = failoverOff() ? null : getXtreamBackupServer(primary);
+    if (!backup) return null;
+    const active = activeXtreamServerUrl(primary);
+    return active === primary
+        ? { active, other: backup, role: 'main' }
+        : { active, other: primary, role: 'backup' };
+}
+
+let globalsInstalled = false;
+/** Publishes the two hooks the TV app's script uses (installed on first use, so no bundler drops them). */
+function installGlobals(): void {
+    if (globalsInstalled) return;
+    globalsInstalled = true;
+    try {
+        const g = globalThis as {
+            __tvServers?: () => ReturnType<typeof describeXtreamServers>;
+            __tvServerSet?: (url: string) => void;
+        };
+        g.__tvServers = () => (lastPrimary ? describeXtreamServers(lastPrimary) : null);
+        g.__tvServerSet = (url: string) => {
+            if (lastPrimary) setActiveXtreamServer(lastPrimary, url);
+        };
+    } catch {
+        /* no global object: nothing to publish */
+    }
 }

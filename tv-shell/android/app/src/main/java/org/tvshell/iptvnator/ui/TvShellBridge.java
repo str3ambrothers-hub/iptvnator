@@ -52,6 +52,9 @@ final class TvShellBridge {
                 if (previewUrl == null || args.size() < 6) return;
                 activity.previewStart(previewUrl, numberAt(args, 2), numberAt(args, 3), numberAt(args, 4), numberAt(args, 5), numberAt(args, 6));
                 break;
+            case "setServers":
+                ServerPair.set(stringAt(args, 1), stringAt(args, 2));
+                break;
             case "previewStop":
                 activity.previewStop();
                 break;

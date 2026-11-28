@@ -55,9 +55,22 @@
     var keepScreenOn = false;
 
     // --------------------------------------------------------------- bridge
+    /**
+     * Tells the app which server (main or backup) the page is using and which is the other one, so
+     * the built-in player can move to the other server when a stream will not load or freezes.
+     * Kill switch: localStorage['server-flip'] = 'off'.
+     */
+    function pushServers() {
+        var pair = null;
+        try {
+            if (localStorage.getItem('server-flip') !== 'off' && typeof window.__tvServers === 'function') pair = window.__tvServers();
+        } catch (e) { /* none */ }
+        try { bridge.postMessage(JSON.stringify(['setServers', pair ? pair.active : '', pair ? pair.other : ''])); } catch (e) { /* ignore */ }
+    }
     function native(method) {
         var args = Array.prototype.slice.call(arguments, 1);
         if (isAndroid) {
+            if (method === 'onSilentPlayback' || method === 'onPlaybackError' || method === 'previewStart') pushServers();
             try {
                 bridge.postMessage(JSON.stringify([method].concat(args)));
             } catch (e) {
@@ -1682,6 +1695,9 @@
             if (g) lines.push('channels ' + g.channels + ' | loaded ' + g.loaded + ' | on screen ' + g.visible + ' | waiting to save ' + g.queued, 'scan ' + (g.scanning ? 'running' : 'idle') + ' | scanned ' + g.scanned + ' | row requests ' + g.requests);
             if (c) lines.push('cache ' + c.cached + ' schedules | requests running ' + c.running + ' waiting ' + c.waiting);
             var b = typeof window.__tvGuideBulk === 'function' ? window.__tvGuideBulk() : null;
+            var srv = null;
+            try { srv = typeof window.__tvServers === 'function' ? window.__tvServers() : null; } catch (e) { /* none */ }
+            if (srv) lines.push('server: ' + srv.role + ' (' + String(srv.active).replace(/^https?:\/\//, '') + ')');
             if (b) lines.push('guide file ' + b.state + (b.error ? ' (' + b.error + (b.retryInMs > 0 ? ', retry in ' + Math.ceil(b.retryInMs / 1000) + 's' : '') + ')' : '') + ' | ' + b.channels + ' channels in it | ' + b.kept + ' loaded here | ' + b.absent + ' not in it | ' + b.requests + ' requests' + (b.truncated ? ' | CUT SHORT' : ''));
             statsBox.textContent = lines.join('\n');
         }
