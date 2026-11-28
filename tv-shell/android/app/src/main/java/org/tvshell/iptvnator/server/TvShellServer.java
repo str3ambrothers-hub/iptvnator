@@ -60,6 +60,7 @@ public final class TvShellServer extends NanoHTTPD {
         final ImageCache images = new ImageCache(new File(context.getApplicationContext().getCacheDir(), "posters"),
             IMAGE_CACHE_BYTES, fetcher, new AndroidImageTranscoder());
         this.backend = new WebBackend(fetcher, "/api", images);
+        this.backend.setGuideCacheDir(new File(context.getApplicationContext().getCacheDir(), "guide"));
         Thread trimmer = new Thread(new Runnable() {
             @Override
             public void run() {

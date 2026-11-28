@@ -1711,6 +1711,32 @@ console.log('12. Live TV opens as a programme guide (TV guide mode)');
     await page.waitForTimeout(1000);
     await page.evaluate(() => { try { localStorage.setItem('tv-guide', 'off'); } catch (e) { /* ignore */ } });
 }
+console.log('14. "Loading content" screen while the provider guide file is read');
+{
+    const portal = page.url().match(/\/workspace\/xtreams\/[^/?#]+/);
+    if (!portal) {
+        check(false, 'no account page to open for the loading screen: ' + page.url());
+    } else {
+        const loadingPage = await context.newPage();
+        let polls = 0;
+        await loadingPage.route('**/guide-status', (route) => {
+            polls++;
+            route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ state: polls < 6 ? 'building' : 'ready' }) });
+        });
+        await loadingPage.goto(URL_ + portal[0] + '/live', { waitUntil: 'domcontentloaded' });
+        const shown = await loadingPage.waitForSelector('#tv-loading', { timeout: 20000 }).then(() => true, () => false);
+        const look = shown ? await loadingPage.evaluate(() => ({
+            label: (document.querySelector('#tv-loading').textContent || '').trim(),
+            logo: !!document.querySelector('#tv-loading img'),
+            ring: !!document.querySelector('#tv-loading .ring'),
+        })) : null;
+        check(shown && look.label === 'Loading content' && look.logo && look.ring,
+            'the loading screen has the logo, a spinning ring and the words: ' + JSON.stringify(look));
+        const gone = await loadingPage.waitForSelector('#tv-loading', { state: 'detached', timeout: 20000 }).then(() => true, () => false);
+        check(gone, 'the loading screen goes away once the guide file is ready');
+        await loadingPage.close();
+    }
+}
 console.log('13. TV sign-in: only a username and a password, on the built-in servers');
 {
     // A fresh browser profile: no playlists yet, so the sources page offers the "Add" cards.

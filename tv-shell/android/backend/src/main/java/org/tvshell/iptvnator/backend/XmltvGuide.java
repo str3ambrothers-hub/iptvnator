@@ -86,6 +86,52 @@ public final class XmltvGuide {
             }
         }
 
+        /** Saves the kept guide so a restart of the app does not download the file again. */
+        public void saveTo(java.io.OutputStream raw) throws IOException {
+            java.io.DataOutputStream out = new java.io.DataOutputStream(new java.io.BufferedOutputStream(raw));
+            out.writeInt(1);
+            out.writeLong(builtAtMs);
+            out.writeBoolean(truncated);
+            out.writeInt(programmes);
+            out.writeInt(channels.size());
+            for (Map.Entry<String, ByteArrayOutputStream> entry : channels.entrySet()) {
+                byte[] kept = entry.getValue().toByteArray();
+                out.writeUTF(entry.getKey());
+                out.writeInt(kept.length);
+                out.write(kept);
+            }
+            out.writeInt(nameIndex.size());
+            for (Map.Entry<String, String> entry : nameIndex.entrySet()) {
+                out.writeUTF(entry.getKey());
+                out.writeUTF(entry.getValue());
+            }
+            out.flush();
+        }
+
+        /** Reads what {@link #saveTo} wrote; throws on anything else. */
+        public static Snapshot loadFrom(java.io.InputStream raw) throws IOException {
+            java.io.DataInputStream in = new java.io.DataInputStream(new java.io.BufferedInputStream(raw));
+            if (in.readInt() != 1) throw new IOException("unknown guide copy");
+            Snapshot snapshot = new Snapshot(in.readLong());
+            snapshot.truncated = in.readBoolean();
+            snapshot.programmes = in.readInt();
+            int count = in.readInt();
+            for (int i = 0; i < count; i++) {
+                String id = in.readUTF();
+                int length = in.readInt();
+                if (length < 0 || length > 64 * 1024 * 1024) throw new IOException("bad guide copy");
+                byte[] kept = new byte[length];
+                in.readFully(kept);
+                ByteArrayOutputStream stream = new ByteArrayOutputStream(Math.max(16, length));
+                stream.write(kept, 0, length);
+                snapshot.channels.put(id, stream);
+                snapshot.bytes += length;
+            }
+            int names = in.readInt();
+            for (int i = 0; i < names; i++) snapshot.nameIndex.put(in.readUTF(), in.readUTF());
+            return snapshot;
+        }
+
         void add(String channelId, long startMs, long stopMs, String title, String desc, long maxBytes) {
             if (bytes >= maxBytes) {
                 truncated = true;

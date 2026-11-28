@@ -2420,6 +2420,94 @@
             var active = document.activeElement;
             if ((active && active !== document.body) || focusFirst() || attempts > 60) clearInterval(timer);
         }, 250);
+        /**
+         * "Loading content" screen: the first time the account opens in a run of the app, the provider's
+         * guide file is read in the background (the backend starts it when the live list is asked for).
+         * This covers the page with the logo and a spinning ring until that is done, so the guide is full
+         * when it opens. It never waits long: a ready or failed guide, Back, or 45 seconds ends it.
+         * Kill switch: localStorage['loading-screen'] = 'off'.
+         */
+        (function loadingScreen() {
+            if (killSwitchOff('loading-screen')) return;
+            var done = false, el = null, session = 0, idleSince = 0, startedAt = 0, polling = false;
+            function statusUrl() {
+                var base = ((window.__IPTVNATOR_CONFIG__ || {}).BACKEND_URL || '/api').replace(/\/+$/, '');
+                return base + '/guide-status';
+            }
+            function inPortal() { return /\/workspace\/xtreams\//.test(location.pathname); }
+            function show() {
+                if (el) return;
+                if (!document.getElementById('tv-loading-style')) {
+                    var style = document.createElement('style');
+                    style.id = 'tv-loading-style';
+                    style.textContent = '@keyframes tv-loading-spin{to{transform:rotate(360deg)}}' +
+                        '@media (prefers-reduced-motion:reduce){#tv-loading .ring{animation:none!important}}';
+                    document.head.appendChild(style);
+                }
+                el = document.createElement('div');
+                el.id = 'tv-loading';
+                el.setAttribute('role', 'status');
+                el.setAttribute('aria-label', 'Loading content');
+                el.style.cssText = 'position:fixed;inset:0;z-index:2147483000;background:#0e1620;color:#e9eef5;' +
+                    'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;' +
+                    'font:600 22px/1.2 sans-serif;letter-spacing:.04em';
+                var wheel = document.createElement('div');
+                wheel.style.cssText = 'position:relative;width:200px;height:200px;display:flex;align-items:center;justify-content:center';
+                var ring = document.createElement('div');
+                ring.className = 'ring';
+                ring.style.cssText = 'position:absolute;inset:0;border-radius:50%;box-sizing:border-box;' +
+                    'border:7px solid rgba(255,255,255,.12);border-top-color:#4c8dff;animation:tv-loading-spin 1s linear infinite';
+                var logo = document.createElement('img');
+                try { logo.src = new URL('assets/icons/logo.png', document.baseURI).href; } catch (e) { /* no logo */ }
+                logo.alt = '';
+                logo.style.cssText = 'max-width:120px;max-height:120px;object-fit:contain';
+                wheel.appendChild(ring);
+                wheel.appendChild(logo);
+                var label = document.createElement('div');
+                label.textContent = 'Loading content';
+                el.appendChild(wheel);
+                el.appendChild(label);
+                document.body.appendChild(el);
+            }
+            function hide() {
+                done = true;
+                if (el) { el.remove(); el = null; }
+            }
+            // While it is up, the remote does nothing behind it, except Back, which ends the wait.
+            document.addEventListener('keydown', function (e) {
+                if (!el) return;
+                e.stopImmediatePropagation();
+                e.preventDefault();
+                if (e.key === 'Escape' || e.key === 'Backspace' || e.keyCode === 4 || e.keyCode === 27) hide();
+            }, true);
+            function check() {
+                if (polling) return;
+                polling = true;
+                var mine = session;
+                fetch(statusUrl(), { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (info) {
+                    polling = false;
+                    if (done || mine !== session) return;
+                    var state = info && info.state;
+                    if (!state || state === 'ready' || state === 'error') return hide();
+                    var now = Date.now();
+                    if (now - startedAt > 45000) return hide();
+                    if (state === 'idle') {
+                        // The page has not asked for the live list yet: give it a few seconds to.
+                        if (!idleSince) idleSince = now;
+                        if (now - idleSince > 8000) return hide();
+                    } else {
+                        idleSince = 0;
+                    }
+                    show();
+                }, function () { polling = false; if (!done) hide(); });
+            }
+            setInterval(function () {
+                if (done) return;
+                if (!inPortal()) { if (el) { el.remove(); el = null; } startedAt = 0; idleSince = 0; return; }
+                if (!startedAt) { startedAt = Date.now(); session++; }
+                check();
+            }, 600);
+        })();
         log('ready (' + (isAndroid ? 'android' : 'browser emulation: F9=Back F10=Menu F8=Play/Pause F7=External') + ')');
         // Report ready only once Angular has rendered (main.ts removes
         // #initial-splash after the first paint). A bundle this engine cannot

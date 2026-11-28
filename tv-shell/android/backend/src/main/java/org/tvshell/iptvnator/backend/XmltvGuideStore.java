@@ -1,5 +1,8 @@
 package org.tvshell.iptvnator.backend;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.LinkedHashMap;
@@ -29,6 +32,9 @@ public final class XmltvGuideStore {
     private boolean building;
     private String error;
     private long failedAtMs;
+    private File cacheDir;
+    /** A saved copy older than this is not used at all. */
+    private static final long SAVED_MAX_AGE_MS = 2L * 3_600_000L;
 
     public XmltvGuideStore(HttpFetcher fetcher) {
         this(fetcher, Math.min(40L * 1024 * 1024, Runtime.getRuntime().maxMemory() / 6));
@@ -39,12 +45,70 @@ public final class XmltvGuideStore {
         this.keptCapBytes = keptCapBytes;
     }
 
+    /** Where the built guide is saved (null: nowhere). The OS may clear it, which only costs a download. */
+    public void setCacheDir(File dir) {
+        synchronized (lock) {
+            cacheDir = dir;
+        }
+    }
+
+    private File savedFile(String guideKey) {
+        if (cacheDir == null) return null;
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(guideKey.getBytes("UTF-8"));
+            StringBuilder name = new StringBuilder("guide-");
+            for (int i = 0; i < 12; i++) name.append(String.format("%02x", digest[i] & 0xff));
+            return new File(cacheDir, name.append(".bin").toString());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private XmltvGuide.Snapshot loadSaved(String guideKey) {
+        File file = savedFile(guideKey);
+        if (file == null || !file.isFile()) return null;
+        FileInputStream in = null;
+        try {
+            in = new FileInputStream(file);
+            XmltvGuide.Snapshot loaded = XmltvGuide.Snapshot.loadFrom(in);
+            if (System.currentTimeMillis() - loaded.builtAtMs > SAVED_MAX_AGE_MS) return null;
+            return loaded;
+        } catch (IOException e) {
+            return null;
+        } catch (RuntimeException e) {
+            return null;
+        } catch (OutOfMemoryError e) {
+            return null;
+        } finally {
+            if (in != null) try { in.close(); } catch (IOException ignored) { /* nothing to do */ }
+        }
+    }
+
+    private void save(String guideKey, XmltvGuide.Snapshot built) {
+        File file = savedFile(guideKey);
+        if (file == null) return;
+        File temp = new File(file.getPath() + ".tmp");
+        FileOutputStream out = null;
+        try {
+            cacheDir.mkdirs();
+            out = new FileOutputStream(temp);
+            built.saveTo(out);
+            out.close();
+            out = null;
+            if (!temp.renameTo(file)) temp.delete();
+        } catch (IOException e) {
+            temp.delete();
+        } finally {
+            if (out != null) try { out.close(); } catch (IOException ignored) { /* nothing to do */ }
+        }
+    }
+
     /** Starts (or keeps) the build for {@code guideKey}; returns at once. */
     public Map<String, Object> start(final String guideKey, final String url, final Map<String, String> headers) {
         synchronized (lock) {
             if (!guideKey.equals(key)) {
                 key = guideKey;
-                snapshot = null;
+                snapshot = loadSaved(guideKey);
                 error = null;
                 failedAtMs = 0;
             }
@@ -94,6 +158,7 @@ public final class XmltvGuideStore {
             if (failure == null) {
                 snapshot = built;
                 error = null;
+                save(buildingFor, built);
             } else {
                 error = failure;
                 failedAtMs = System.currentTimeMillis();

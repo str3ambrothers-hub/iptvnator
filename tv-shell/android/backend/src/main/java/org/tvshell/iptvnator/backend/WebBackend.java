@@ -94,6 +94,11 @@ public class WebBackend {
         this.guideStore = new XmltvGuideStore(fetcher);
     }
 
+    /** Folder where the provider's guide is saved between runs of the app (optional). */
+    public void setGuideCacheDir(java.io.File dir) {
+        guideStore.setCacheDir(dir);
+    }
+
     // ---------------------------------------------------------------- entry
     public Response handle(String method, String path, Map<String, List<String>> rawQuery, String body) {
         Map<String, String> query = firstValues(rawQuery);
@@ -127,6 +132,7 @@ public class WebBackend {
             return json(501, error("EPG (XMLTV) is not available in the TV shell", 501));
         }
         if ("GET".equals(method) && path.equals("/image")) return image(query);
+        if ("GET".equals(method) && path.equals("/guide-status")) return json(200, guideStore.state());
         if ("GET".equals(method) && path.equals("/xtream")) return xtream(query);
         if ("GET".equals(method) && path.equals("/stalker")) return stalker(query);
         return json(404, error("Not found", 404));
@@ -245,6 +251,9 @@ public class WebBackend {
         try {
             String base = PortalUrls.normalizeXtreamServerUrl(registeredUrl);
             if (action != null && action.startsWith("xmltv_guide")) return xmltvGuide(query, base, action);
+            // The portal opening (its live list is asked for) starts reading the provider's guide file at
+            // once, in the background, so the guide is ready by the time it is opened.
+            if ("get_live_categories".equals(action) || "get_live_streams".equals(action)) startGuide(query, base);
             Map<String, String> params = proxyParams(query, "targetId", "connectionTest", "userAgent");
             Map<String, String> headers = new LinkedHashMap<String, String>();
             String userAgent = query.get("userAgent");
@@ -283,10 +292,11 @@ public class WebBackend {
      * begins reading it in the background, {@code xmltv_guide_read} (ids=a,b,c) answers the state
      * and the kept programmes of those channels. Same login and server as the other Xtream calls.
      */
-    private Response xmltvGuide(Map<String, String> query, String base, String action) {
+    /** Starts the guide file build for this login (no-op when it is fresh or already running). */
+    private Map<String, Object> startGuide(Map<String, String> query, String base) {
         String username = query.get("username");
         String password = query.get("password");
-        if (username == null || password == null) return json(200, error("Bad Gateway", 502));
+        if (username == null || password == null) return null;
         Map<String, String> headers = new LinkedHashMap<String, String>();
         String userAgent = query.get("userAgent");
         if (userAgent != null) headers.put("User-Agent", userAgent);
@@ -294,7 +304,12 @@ public class WebBackend {
         params.put("username", username);
         params.put("password", password);
         String url = PortalUrls.withQuery(base.replaceAll("/+$", "") + "/xmltv.php", params);
-        Map<String, Object> payload = guideStore.start(base + "|" + username, url, headers);
+        return guideStore.start(base + "|" + username, url, headers);
+    }
+
+    private Response xmltvGuide(Map<String, String> query, String base, String action) {
+        Map<String, Object> payload = startGuide(query, base);
+        if (payload == null) return json(200, error("Bad Gateway", 502));
         if ("xmltv_guide_read".equals(action)) {
             List<String> ids = new ArrayList<String>();
             String joined = query.get("ids");

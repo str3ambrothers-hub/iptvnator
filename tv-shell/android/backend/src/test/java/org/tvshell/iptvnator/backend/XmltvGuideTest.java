@@ -77,4 +77,27 @@ public class XmltvGuideTest {
         assertEquals("by name", "\"USA Go Traveler\":[[1795786200,1795789800,\"Trip\",\"\"]],\"[US] Go Traveler (HD)\":[[1795786200,1795789800,\"Trip\",\"\"]]", out.toString());
         assertEquals("normalised", "gotraveler", XmltvGuide.normName("USA | Go Traveler HD"));
     }
+
+    public void testASavedCopyReadsBackTheSame() throws Exception {
+        String xml = "<?xml version=\"1.0\"?><tv>"
+            + "<channel id=\"ESPN.us\"><display-name>ESPN HD</display-name></channel>"
+            + "<programme start=\"20261127133000 +0000\" stop=\"20261127143000 +0000\" channel=\"ESPN.us\"><title>Live game</title><desc>A match</desc></programme>"
+            + "</tv>";
+        XmltvGuide.Snapshot original = parse(xml, T - 1000, T + 6 * 3_600_000L, 1 << 20);
+        java.io.ByteArrayOutputStream saved = new java.io.ByteArrayOutputStream();
+        original.saveTo(saved);
+        XmltvGuide.Snapshot copy = XmltvGuide.Snapshot.loadFrom(new ByteArrayInputStream(saved.toByteArray()));
+        assertEquals("same programmes", read(original, "espn.us"), read(copy, "espn.us"));
+        assertEquals("same count", Integer.valueOf(original.programmes), Integer.valueOf(copy.programmes));
+        StringBuilder byName = new StringBuilder();
+        copy.writeByName(Arrays.asList("ESPN HD"), byName);
+        assertTrue("names still match", byName.toString().contains("Live game"));
+        boolean refused = false;
+        try {
+            XmltvGuide.Snapshot.loadFrom(new ByteArrayInputStream(new byte[] {0, 0, 0, 9}));
+        } catch (java.io.IOException expected) {
+            refused = true;
+        }
+        assertTrue("an unknown copy is refused", refused);
+    }
 }
