@@ -2424,12 +2424,12 @@
          * "Loading content" screen: the first time the account opens in a run of the app, the provider's
          * guide file is read in the background (the backend starts it when the live list is asked for).
          * This covers the page with the logo and a spinning ring until that is done, so the guide is full
-         * when it opens. It never waits long: a ready or failed guide, Back, or 45 seconds ends it.
+         * when it opens. It also waits for the playlist sync pop-up to finish. It never waits long without a reason: a ready or failed guide with no sync, Back, or 45 seconds (5 minutes while a sync runs) ends it.
          * Kill switch: localStorage['loading-screen'] = 'off'.
          */
         (function loadingScreen() {
             if (killSwitchOff('loading-screen')) return;
-            var done = false, el = null, session = 0, idleSince = 0, startedAt = 0, polling = false;
+            var done = false, el = null, session = 0, idleSince = 0, startedAt = 0, polling = false, syncGoneSince = 0;
             function statusUrl() {
                 var base = ((window.__IPTVNATOR_CONFIG__ || {}).BACKEND_URL || '/api').replace(/\/+$/, '');
                 return base + '/guide-status';
@@ -2488,22 +2488,29 @@
                     polling = false;
                     if (done || mine !== session) return;
                     var state = info && info.state;
-                    if (!state || state === 'ready' || state === 'error') return hide();
+                    if (!state) return hide(); // no guide status here (not the TV app): nothing to wait for
                     var now = Date.now();
-                    if (now - startedAt > 45000) return hide();
+                    // The playlist sync ("Syncing playlist" pop-up) is part of the wait: the screen stays
+                    // until it has been gone for a moment.
+                    var sync = !!document.querySelector('app-workspace-shell-import-overlay');
+                    if (sync) syncGoneSince = 0; else if (!syncGoneSince) syncGoneSince = now;
+                    var syncSettled = !sync && now - syncGoneSince >= 1200;
+                    var guideDone = state === 'ready' || state === 'error';
                     if (state === 'idle') {
                         // The page has not asked for the live list yet: give it a few seconds to.
                         if (!idleSince) idleSince = now;
-                        if (now - idleSince > 8000) return hide();
+                        if (now - idleSince > 8000) guideDone = true;
                     } else {
                         idleSince = 0;
                     }
+                    if (now - startedAt > (sync ? 300000 : 45000)) return hide();
+                    if (guideDone && syncSettled) return hide();
                     show();
                 }, function () { polling = false; if (!done) hide(); });
             }
             setInterval(function () {
                 if (done) return;
-                if (!inPortal()) { if (el) { el.remove(); el = null; } startedAt = 0; idleSince = 0; return; }
+                if (!inPortal()) { if (el) { el.remove(); el = null; } startedAt = 0; idleSince = 0; syncGoneSince = 0; return; }
                 if (!startedAt) { startedAt = Date.now(); session++; }
                 check();
             }, 600);
