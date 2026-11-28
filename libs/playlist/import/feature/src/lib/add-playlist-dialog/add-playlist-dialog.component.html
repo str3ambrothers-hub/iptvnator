@@ -1,5 +1,8 @@
 <div class="apd">
-    <app-dialog-shell [heading]="'HOME.URL_UPLOAD.ADD_PLAYLIST' | translate">
+    <app-dialog-shell
+        [heading]="simpleLogin ? 'Sign in' : ('HOME.URL_UPLOAD.ADD_PLAYLIST' | translate)"
+    >
+        @if (!simpleLogin) {
         <div
             class="apd-method-grid"
             appRadioGroup
@@ -31,6 +34,7 @@
         <p id="apd-method-help" class="apd-method-help">
             {{ selectedMethod().subKey | translate }}
         </p>
+        }
 
         <div class="apd-form-area" (input)="urlImport.clearError()">
             @if (urlImport.pending()) {
@@ -111,7 +115,7 @@
             }
         </div>
         <div appDialogFooterStart>
-            @if (playlistType() === 'xtream') {
+            @if (playlistType() === 'xtream' && !simpleLogin) {
                 <p class="apd-connection-notice" id="xtream-http-test-notice">
                     {{
                         'HOME.XTREAM_PLAYLIST.CONNECTION_TEST.HTTP_PERMISSION'
@@ -170,6 +174,19 @@
                     </button>
                 }
                 @case ('xtream') {
+                    @if (simpleLogin) {
+                        <button
+                            mat-flat-button
+                            type="button"
+                            [disabled]="
+                                !xtreamImport()?.form?.valid ||
+                                xtreamImport()?.signingIn()
+                            "
+                            (click)="xtreamImport()?.signIn()"
+                        >
+                            {{ xtreamImport()?.signingIn() ? 'Signing in…' : 'Sign in' }}
+                        </button>
+                    } @else {
                     <button
                         mat-flat-button
                         class="app-dialog__secondary"
@@ -199,6 +216,7 @@
                     >
                         {{ 'HOME.URL_UPLOAD.ADD_PLAYLIST' | translate }}
                     </button>
+                    }
                 }
                 @case ('stalker') {
                     @if (stalkerImport()?.isLoading()) {

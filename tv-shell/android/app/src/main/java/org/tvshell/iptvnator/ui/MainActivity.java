@@ -128,6 +128,17 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = new Prefs(this);
+        // The corner preview moved to the other server: tell the page now so it follows.
+        ServerPair.pageNotifier = new Runnable() {
+            @Override public void run() {
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        String moved = ServerPair.takeSwitched();
+                        if (moved != null) js("window.__tvServerSet && window.__tvServerSet(" + org.json.JSONObject.quote(moved) + ")");
+                    }
+                });
+            }
+        };
         if (savedInstanceState != null) restoreUrl = savedInstanceState.getString(STATE_URL);
         setContentView(R.layout.activity_main);
         root = findViewById(R.id.root);
@@ -823,6 +834,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        ServerPair.pageNotifier = null;
         previewStop();
         fileChooser.cancel();
         handler.removeCallbacks(readyWatchdog);

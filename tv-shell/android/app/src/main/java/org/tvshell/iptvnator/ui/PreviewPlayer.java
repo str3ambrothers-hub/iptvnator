@@ -38,6 +38,7 @@ final class PreviewPlayer {
     private String url;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable report;
+    private Runnable stall;
     private int retries;
     private static final int MAX_RETRIES = 4;
 
@@ -108,6 +109,25 @@ final class PreviewPlayer {
             }
 
             @Override
+            public void onPlaybackStateChanged(int state) {
+                if (stall != null) handler.removeCallbacks(stall);
+                if (state != Player.STATE_BUFFERING) return;
+                // Frozen: still waiting for data after a while, so try the other server.
+                stall = new Runnable() {
+                    @Override public void run() {
+                        if (player != thisPlayer[0] || view == null || !streamUrl.equals(url)) return;
+                        if (thisPlayer[0].getPlaybackState() != Player.STATE_BUFFERING) return;
+                        String moved = ServerPair.switchTo(streamUrl);
+                        if (moved == null) return;
+                        url = moved;
+                        ServerPair.notifyPage();
+                        open(moved);
+                    }
+                };
+                handler.postDelayed(stall, 15_000);
+            }
+
+            @Override
             public void onPlayerError(PlaybackException error) {
                 Log.w(ShellApp.TAG, "preview failed: " + error.getErrorCodeName() + " " + streamUrl.replaceAll("//[^/]*/.*", "//…"));
                 if (player != thisPlayer[0]) return;
@@ -115,9 +135,20 @@ final class PreviewPlayer {
                 // connection a moment later usually works, so the picture comes back on its own.
                 if (retries < MAX_RETRIES && streamUrl.equals(url)) {
                     retries++;
+                    // After two failed tries on this server, move to the other one (main <-> backup).
+                    String next = streamUrl;
+                    if (retries >= 2) {
+                        String moved = ServerPair.switchTo(streamUrl);
+                        if (moved != null) {
+                            next = moved;
+                            url = moved;
+                            ServerPair.notifyPage();
+                        }
+                    }
+                    final String target = next;
                     handler.postDelayed(new Runnable() {
                         @Override public void run() {
-                            if (player == thisPlayer[0] && streamUrl.equals(url) && view != null) open(streamUrl);
+                            if (player == thisPlayer[0] && target.equals(url) && view != null) open(target);
                         }
                     }, 2000L * retries);
                     return;
@@ -140,6 +171,7 @@ final class PreviewPlayer {
     /** Removes the picture and frees the decoder and the provider connection. */
     void stop() {
         if (report != null) handler.removeCallbacks(report);
+        if (stall != null) handler.removeCallbacks(stall);
         release();
         url = null;
         if (view != null) {

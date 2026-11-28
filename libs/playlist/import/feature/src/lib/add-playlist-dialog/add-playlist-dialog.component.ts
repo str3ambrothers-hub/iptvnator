@@ -41,6 +41,7 @@ import { EpgPreferencesService } from '@iptvnator/services';
 import {
     ProviderImportCandidate,
     SOURCE_TYPE_ICONS,
+    streambrosLoginOn,
 } from '@iptvnator/shared/interfaces';
 import { AutoImportComponent } from '../auto-import/auto-import.component';
 import { FileUploadComponent } from '../file-upload/file-upload.component';
@@ -122,6 +123,8 @@ export class AddPlaylistDialogComponent {
         file: this.fileUpload,
     });
 
+    /** TV app: only the username and password sign-in, Xtream, on the built-in servers. */
+    readonly simpleLogin = streambrosLoginOn();
     readonly method = signal<PlaylistType>('url');
     readonly autoImportEpg = signal(true);
     readonly epgEnabled = inject(EpgPreferencesService).enabled;
@@ -203,7 +206,9 @@ export class AddPlaylistDialogComponent {
     );
 
     constructor() {
-        if (this.data?.type) {
+        if (this.simpleLogin) {
+            this.method.set('xtream');
+        } else if (this.data?.type) {
             this.method.set(this.data.type);
         }
         effect(() => {
@@ -265,7 +270,7 @@ export class AddPlaylistDialogComponent {
     }
 
     selectMethod(method: PlaylistType): void {
-        if (method === this.method()) return;
+        if (this.simpleLogin || method === this.method()) return;
         this.drafts.capture(this.method());
         this.urlImport.cancel();
         this.urlImport.clearError();

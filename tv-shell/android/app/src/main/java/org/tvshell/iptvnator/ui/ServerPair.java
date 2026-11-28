@@ -10,7 +10,15 @@ final class ServerPair {
     private static volatile String other = "";
     private static volatile String switchedTo;
 
+    /** Set by the main screen: tells the page (right now) that the player moved to the other server. */
+    static volatile Runnable pageNotifier;
+
     private ServerPair() {}
+
+    static void notifyPage() {
+        Runnable r = pageNotifier;
+        if (r != null) r.run();
+    }
 
     static synchronized void set(String newActive, String newOther) {
         active = newActive == null ? "" : stripSlash(newActive.trim());

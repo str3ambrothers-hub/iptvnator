@@ -10,6 +10,26 @@ import { normalizeXtreamServerUrl } from './xtream-portal.utils';
  * Kill switch: localStorage['server-failover'] = 'off'.
  */
 const STORAGE_KEY = 'xtream-backup-servers';
+
+/** The two servers every StreamBros login uses (TV app): the main one and its backup. */
+export const STREAMBROS_MAIN_SERVER = 'http://proxpanel.cc:8080';
+export const STREAMBROS_BACKUP_SERVER = 'http://proxpanel.to:8080';
+
+/**
+ * TV app sign-in: only username and password, on the two built-in servers, Xtream only.
+ * Kill switch: localStorage['tv-login'] = 'off' brings the full "add playlist" form back.
+ */
+export function streambrosLoginOn(): boolean {
+    try {
+        return (
+            typeof document !== 'undefined' &&
+            document.documentElement.classList.contains('tv-shell') &&
+            localStorage.getItem('tv-login') !== 'off'
+        );
+    } catch {
+        return false;
+    }
+}
 /** After switching to the backup, try the main server again after this long (only without sticky mode). */
 const RETRY_MAIN_AFTER_MS = 15 * 60 * 1000;
 /** Two trouble reports this close together count as one. */
@@ -60,7 +80,13 @@ function readAll(): Record<string, string> {
 
 export function getXtreamBackupServer(primaryUrl: string): string | null {
     const key = normalized(primaryUrl);
-    return key ? (normalized(readAll()[key]) ?? null) : null;
+    if (!key) return null;
+    const saved = normalized(readAll()[key]);
+    if (saved) return saved;
+    // TV app: every login on the StreamBros main server has the StreamBros backup, saved or not.
+    return key === normalized(STREAMBROS_MAIN_SERVER) && streambrosLoginOn()
+        ? normalized(STREAMBROS_BACKUP_SERVER)
+        : null;
 }
 
 /** Saves (or, with an empty value, removes) the backup server of a main server address. */

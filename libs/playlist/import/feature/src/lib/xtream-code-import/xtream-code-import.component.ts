@@ -6,6 +6,7 @@ import {
     viewChild,
     ChangeDetectionStrategy,
     ElementRef,
+    signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -27,6 +28,7 @@ import { PlaylistActions } from '@iptvnator/m3u-state';
 import {
     createXtreamConnectionTestState,
     RuntimeCapabilitiesService,
+    XtreamConnectionTestService,
 } from '@iptvnator/services';
 import { XtreamContentSelectionComponent } from '@iptvnator/ui/components';
 import { PasswordVisibilityToggleDirective } from '@iptvnator/ui/components/password-visibility-toggle';
@@ -35,6 +37,9 @@ import {
     extractXtreamCredentialsFromUrl,
     normalizeXtreamServerUrl,
     setXtreamBackupServer,
+    STREAMBROS_BACKUP_SERVER,
+    STREAMBROS_MAIN_SERVER,
+    streambrosLoginOn,
     XtreamContentType,
     XTREAM_CONTENT_TYPES,
     Playlist,
@@ -116,6 +121,59 @@ export class XtreamCodeImportComponent {
         ),
     });
 
+    /** TV app: sign in with username and password only, on the built-in servers. */
+    readonly simple = streambrosLoginOn();
+    readonly signingIn = signal(false);
+    readonly signInFailed = signal(false);
+    private readonly connectionTester = inject(XtreamConnectionTestService);
+
+    constructor() {
+        if (this.simple) this.applyBuiltInServers();
+        this.form.valueChanges.subscribe(() => this.signInFailed.set(false));
+    }
+
+    private applyBuiltInServers(): void {
+        this.form.patchValue({
+            title: this.form.value.username?.trim() || 'StreamBros',
+            serverUrl: STREAMBROS_MAIN_SERVER,
+            backupServerUrl: STREAMBROS_BACKUP_SERVER,
+        });
+    }
+
+    /**
+     * Checks the login on the main server, then on the backup, and only saves it when one of them
+     * answers; otherwise shows a plain message instead of saving a login that cannot work.
+     */
+    async signIn(): Promise<void> {
+        if (!this.form.valid || this.signingIn()) return;
+        this.signingIn.set(true);
+        this.signInFailed.set(false);
+        try {
+            const username = (this.form.value.username as string).trim();
+            const password = (this.form.value.password as string).trim();
+            let answered = false;
+            for (const serverUrl of [STREAMBROS_MAIN_SERVER, STREAMBROS_BACKUP_SERVER]) {
+                try {
+                    const result = await this.connectionTester.test({ serverUrl, username, password });
+                    if (result.status !== 'unavailable') {
+                        answered = true;
+                        break;
+                    }
+                } catch {
+                    /* try the next server */
+                }
+            }
+            if (!answered) {
+                this.signInFailed.set(true);
+                return;
+            }
+            this.form.patchValue({ title: username });
+            this.addPlaylist();
+        } finally {
+            this.signingIn.set(false);
+        }
+    }
+
     readonly store = inject(Store);
     readonly userAgent = toSignal(this.form.controls.userAgent.valueChanges, {
         initialValue: '',
@@ -145,12 +203,12 @@ export class XtreamCodeImportComponent {
         this.passwordToggle()?.hide();
         this.form.reset({
             _id: createRandomId(),
-            title: '',
+            title: this.simple ? 'StreamBros' : '',
             password: '',
             username: '',
             userAgent: '',
-            serverUrl: '',
-            backupServerUrl: '',
+            serverUrl: this.simple ? STREAMBROS_MAIN_SERVER : '',
+            backupServerUrl: this.simple ? STREAMBROS_BACKUP_SERVER : '',
             importDate: new Date().toISOString(),
             xtreamContentTypes: [...XTREAM_CONTENT_TYPES],
         });
